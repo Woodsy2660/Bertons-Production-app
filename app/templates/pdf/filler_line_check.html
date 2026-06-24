@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Filler Line Check</title>
+    <style>
+        .multi-value { font-size: 8pt; }
+        .check-cell { text-align: center; min-width: 50px; }
+    </style>
+</head>
+<body>
+    <!-- Header Box -->
+    <div class="header-box">
+        <table style="border: none; width: 100%;">
+            <tr>
+                <td style="border: none; width: 70%;">
+                    <div class="form-title">Filler Line Check</div>
+                    <div class="doc-number">FOR PK 017A</div>
+                </td>
+                <td style="border: none; text-align: right;">
+                    <strong>BERTON VINEYARDS</strong><br>
+                    <span style="font-size: 9pt;">Packaging Documentation</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Header Info -->
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th>Date</th>
+            <td>{{ header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-' }}</td>
+            <th>Wine</th>
+            <td>{{ header.product if header else '-' }}</td>
+            <th>Tank</th>
+            <td>{{ header.tank if header else '-' }}</td>
+            <th>Run #</th>
+            <td>{{ batch.run_number }}</td>
+        </tr>
+        <tr>
+            <th>Filters Used</th>
+            <td colspan="3">{{ header_payload.get('filters_used', '-') }}</td>
+            <th>Check Filtration?</th>
+            <td colspan="3">{{ header_payload.get('check_filtration', '-') }}</td>
+        </tr>
+    </table>
+
+    <!-- Matrix Table -->
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 200px;">Check Item</th>
+                {% for reading in readings %}
+                <th class="check-cell">
+                    {{ reading.captured_at.strftime('%H:%M') }}<br>
+                    <small>{{ reading.operator_identifier }}</small>
+                </th>
+                {% endfor %}
+                {% if not readings %}
+                <th class="check-cell">No readings</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Filler Vacuum</strong></td>
+                {% for reading in readings %}
+                <td class="check-cell">{{ reading.payload.get('filler_vacuum', '-') }}</td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Rinser — All Heads Working</strong></td>
+                {% for reading in readings %}
+                <td class="check-cell">{{ reading.payload.get('rinser_all_heads', '-') }}</td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Filler Temperature (18-22°C)</strong></td>
+                {% for reading in readings %}
+                <td class="check-cell">{{ reading.payload.get('filler_temperature', '-') }}</td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Fill Height</strong> <span class="multi-value">(4 bottles)</span></td>
+                {% for reading in readings %}
+                <td class="check-cell">
+                    {% set vals = reading.payload.get('fill_height', []) %}
+                    {% if vals is iterable and vals is not string %}
+                        {% for v in vals %}{{ v }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                    {% else %}{{ vals or '-' }}{% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Dissolved Oxygen</strong> <span class="multi-value">(3 bottles)</span></td>
+                {% for reading in readings %}
+                <td class="check-cell">
+                    {% set vals = reading.payload.get('dissolved_oxygen', []) %}
+                    {% if vals is iterable and vals is not string %}
+                        {% for v in vals %}{{ v }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                    {% else %}{{ vals or '-' }}{% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Redraw (1.3-1.7mm)</strong></td>
+                {% for reading in readings %}
+                <td class="check-cell">{{ reading.payload.get('redraw', '-') }}</td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Torque & Bridge</strong> <span class="multi-value">(6 bottles)</span></td>
+                {% for reading in readings %}
+                <td class="check-cell">
+                    {% set vals = reading.payload.get('torque_bridge', []) %}
+                    {% if vals is iterable and vals is not string %}
+                        {% for v in vals %}{{ v }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                    {% else %}{{ vals or '-' }}{% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Bridge Inspection</strong> <span class="multi-value">(4 bottles)</span></td>
+                {% for reading in readings %}
+                <td class="check-cell">
+                    {% set vals = reading.payload.get('bridge_inspection', []) %}
+                    {% if vals is iterable and vals is not string %}
+                        {% for v in vals %}{{ v }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                    {% else %}{{ vals or '-' }}{% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td><strong>Wad Imprint Check</strong></td>
+                {% for reading in readings %}
+                <td class="check-cell">{{ reading.payload.get('wad_imprint', '-') }}</td>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Footer -->
+    <div style="margin-top: 20px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 10px;">
+        Total readings: {{ readings | length }}
+        {% if form_instance and form_instance.submitted_at %}
+        | Submitted: {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% endif %}
+    </div>
+</body>
+</html>

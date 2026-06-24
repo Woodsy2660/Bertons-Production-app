@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Carton Usage &amp; Quality Control</title>
+    <style>
+        .section-title {
+            font-size: 11pt;
+            font-weight: bold;
+            margin: 14px 0 6px 0;
+            color: #3d1f2b;
+        }
+        .data-table { font-size: 8.5pt; }
+        .data-table th { font-size: 7.5pt; white-space: nowrap; }
+        .data-table td { vertical-align: top; }
+        .bool-cell { text-align: center; }
+        .empty-row { text-align: center; color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    {% set sorted_readings = readings | sort(attribute='sequence') %}
+
+    <div class="header-box">
+        <table style="border: none; width: 100%;">
+            <tr>
+                <td style="border: none; width: 70%;">
+                    <div class="form-title">Carton Usage &amp; Quality Control</div>
+                    <div class="doc-number">FOR PK 018</div>
+                </td>
+                <td style="border: none; text-align: right;">
+                    <strong>BERTON VINEYARDS</strong><br>
+                    <span style="font-size: 9pt;">Packaging Documentation</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table style="margin-bottom: 12px;">
+        <tr>
+            <th style="width: 12%;">Run Number</th>
+            <td style="width: 18%;">{{ batch.run_number }}</td>
+            <th style="width: 10%;">Date</th>
+            <td style="width: 18%;">{{ header_payload.get('date', '') or (header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-') }}</td>
+            <th style="width: 14%;">Carton Wastage</th>
+            <td style="width: 10%;">{{ header_payload.get('carton_wastage', '-') }}</td>
+            <th style="width: 14%;">Divider Wastage</th>
+            <td style="width: 10%;">{{ header_payload.get('divider_wastage', '-') }}</td>
+        </tr>
+        <tr>
+            <th>Product</th>
+            <td colspan="7">{{ header.product if header else '-' }}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">Carton Details</div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Carton Manufacturer</th>
+                <th>Carton Code</th>
+                <th>Qty On Pallet</th>
+                <th>Code Match WO?</th>
+                <th>Batch # on Pallet Tag</th>
+                <th>Dividers Match?</th>
+                <th>Stickers Match?</th>
+                <th>Initials</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set carton_row = namespace(n=0) %}
+            {% for reading in sorted_readings if reading.payload.get('table') == 'carton_details' %}
+            {% set carton_row.n = carton_row.n + 1 %}
+            <tr>
+                <td>{{ carton_row.n }}</td>
+                <td>{{ reading.payload.get('carton_manufacturer', '-') or '-' }}</td>
+                <td>{{ reading.payload.get('carton_code', '-') or '-' }}</td>
+                <td>{{ reading.payload.get('qty_on_pallet', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('carton_code_match', '-') or '-' }}</td>
+                <td>{{ reading.payload.get('batch_number_pallet_tag', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('dividers_match', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('stickers_match', '-') or '-' }}</td>
+                <td>{{ reading.payload.get('initials', reading.operator_identifier) or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="empty-row">No carton detail entries recorded</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="section-title">Hourly QC Check</div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Time</th>
+                <th>Formed &amp; Glued OK?</th>
+                <th>6 Cartons Check OK?</th>
+                <th>Print Match WO?</th>
+                <th>Record Carton Print</th>
+                <th>Glue Shots OK?</th>
+                <th>Sealed Neatly?</th>
+                <th>Initials</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set hourly_row = namespace(n=0) %}
+            {% for reading in sorted_readings if reading.payload.get('table') == 'hourly_qc' %}
+            {% set hourly_row.n = hourly_row.n + 1 %}
+            <tr>
+                <td>{{ hourly_row.n }}</td>
+                <td>{{ reading.payload.get('captured_at', reading.captured_at.strftime('%H:%M')) or reading.captured_at.strftime('%H:%M') }}</td>
+                <td class="bool-cell">{{ reading.payload.get('cartons_formed_glued', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('check_6_cartons', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('carton_print_match', '-') or '-' }}</td>
+                <td>{{ reading.payload.get('record_carton_print', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('glue_shots_ok', '-') or '-' }}</td>
+                <td class="bool-cell">{{ reading.payload.get('cartons_sealed_neatly', '-') or '-' }}</td>
+                <td>{{ reading.payload.get('initials', reading.operator_identifier) or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="empty-row">No hourly QC readings recorded</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 16px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 8px;">
+        {% if form_instance and form_instance.submitted_by %}
+        Submitted by: {{ form_instance.submitted_by }}
+        {% if form_instance.submitted_at %}
+        at {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

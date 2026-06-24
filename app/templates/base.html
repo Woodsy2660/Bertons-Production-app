@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Berton Bottling{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/berton.css">
+    {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen flex flex-col">
+    <nav class="berton-nav">
+        <div class="max-w-6xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                    <a href="/" class="brand text-white no-underline">Berton Vineyards</a>
+                    <span class="subtitle hidden sm:inline">Bottling Production</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a href="/" class="touch-target">All Runs</a>
+                    <a href="/batches/new" class="touch-target">New Run</a>
+                    <a href="/operators" class="touch-target">Operators</a>
+                    {% if debug %}
+                    <a href="/dev/test-run" class="touch-target">Test Run</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 max-w-6xl mx-auto px-4 py-8 w-full">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="berton-footer mt-auto">
+        <div class="max-w-6xl mx-auto px-4 py-5 text-center">
+            Berton Vineyards &mdash; Bottling Run Management
+        </div>
+    </footer>
+</body>
+</html>

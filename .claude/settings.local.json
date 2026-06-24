@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(sh)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(uv init:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(docker compose:*)",
+      "Bash(python3:*)",
+      "Bash(lsof:*)",
+      "Bash(ss:*)",
+      "Bash(docker exec:*)"
+    ]
+  }
+}

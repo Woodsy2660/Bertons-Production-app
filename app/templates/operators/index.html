@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Operators - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-8">
+    <div>
+        <a href="/" class="text-[var(--berton-burgundy)] hover:underline text-lg">&larr; All Runs</a>
+        <h1 class="text-4xl text-[var(--berton-burgundy)] mt-3">Operators</h1>
+        <p class="text-[var(--berton-text-muted)] text-lg mt-1">People who fill in forms on the production line.</p>
+    </div>
+
+    <div class="berton-card p-6">
+        <h2 class="text-2xl text-[var(--berton-burgundy)] mb-4">Add an Operator</h2>
+        <form action="/operators" method="POST" class="space-y-4">
+            <div>
+                <label for="name" class="berton-label">Full Name</label>
+                <input type="text" id="name" name="name" required
+                       class="berton-input" placeholder="e.g. John Smith">
+            </div>
+            <div>
+                <label for="initials" class="berton-label">Initials</label>
+                <input type="text" id="initials" name="initials" required maxlength="5"
+                       class="berton-input w-32" placeholder="e.g. JS">
+            </div>
+            <button type="submit" class="btn-primary">Add Operator</button>
+        </form>
+    </div>
+
+    <div class="berton-card overflow-hidden">
+        {% if operators %}
+        <ul class="divide-y divide-[var(--berton-border)]">
+            {% for operator in operators %}
+            <li class="flex items-center justify-between px-6 py-4">
+                <span class="text-lg font-semibold">{{ operator.name }}</span>
+                <span class="text-[var(--berton-text-muted)] font-mono text-lg">{{ operator.initials }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="px-6 py-10 text-center text-[var(--berton-text-muted)] text-lg">
+            No operators added yet.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

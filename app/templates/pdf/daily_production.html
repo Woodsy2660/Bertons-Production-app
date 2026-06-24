@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Daily Production Sheet</title>
+    <style>
+        .dip-tank-table { margin-top: 10px; }
+        .signature-line { border-bottom: 1px solid #000; width: 150px; display: inline-block; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <!-- Header Box -->
+    <div class="header-box">
+        <table style="border: none; width: 100%;">
+            <tr>
+                <td style="border: none; width: 70%;">
+                    <div class="form-title">Daily Production Sheet</div>
+                    <div class="doc-number">FOR PK 013</div>
+                </td>
+                <td style="border: none; text-align: right;">
+                    <strong>BERTON VINEYARDS</strong><br>
+                    <span style="font-size: 9pt;">Packaging Documentation</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Main Info Table -->
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th style="width: 20%;">Date</th>
+            <td style="width: 30%;">{{ header_payload.get('date', '') or (header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-') }}</td>
+            <th style="width: 20%;">Run Number</th>
+            <td style="width: 30%;">{{ batch.run_number }}</td>
+        </tr>
+        <tr>
+            <th>Product</th>
+            <td colspan="3">{{ header_payload.get('product', '') or (header.product if header else '-') }}</td>
+        </tr>
+        <tr>
+            <th>Tank</th>
+            <td>{{ header_payload.get('tank', '') or (header.tank if header else '-') }}</td>
+            <th>Stock Item</th>
+            <td>{{ header.stock_item if header else '-' }}</td>
+        </tr>
+    </table>
+
+    <!-- Production Times -->
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th style="width: 25%;">Start Time</th>
+            <td style="width: 25%;">{{ header_payload.get('start_time', '-') }}</td>
+            <th style="width: 25%;">Finish Time</th>
+            <td style="width: 25%;">{{ header_payload.get('finish_time', '-') }}</td>
+        </tr>
+    </table>
+
+    <!-- Production Data -->
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th style="width: 30%;">Cartons Produced (Office)</th>
+            <td style="width: 70%;">{{ header_payload.get('cartons_produced', '-') }}</td>
+        </tr>
+        <tr>
+            <th>Wine Volume (Office)</th>
+            <td>{{ header_payload.get('wine_volume', '-') }}</td>
+        </tr>
+        <tr>
+            <th>Filler Room Bottle Breakages?</th>
+            <td>{{ header_payload.get('filler_room_breakages', '-') }}</td>
+        </tr>
+    </table>
+
+    <!-- Dip Tanks -->
+    {% if header_payload.get('dip_tanks') %}
+    <h3 style="margin-top: 20px;">Dip Tank Readings</h3>
+    <table class="dip-tank-table">
+        <tr>
+            <th>Tank</th>
+            <th>Start</th>
+            <th>End</th>
+        </tr>
+        {% for tank in header_payload.get('dip_tanks', []) %}
+        <tr>
+            <td>{{ tank.get('label', 'Tank ' ~ loop.index) }}</td>
+            <td>{{ tank.get('start', '-') }}</td>
+            <td>{{ tank.get('end', '-') }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    <!-- Signature -->
+    <div style="margin-top: 30px;">
+        <p>
+            <strong>Initials:</strong>
+            <span class="signature-line">{{ header_payload.get('initials', '') }}</span>
+        </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top: 20px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 10px;">
+        {% if form_instance and form_instance.submitted_at %}
+        Submitted: {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% endif %}
+    </div>
+</body>
+</html>

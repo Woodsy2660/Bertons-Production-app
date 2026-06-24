@@ -1,0 +1,41 @@
+{# Renders a single form field. Expects: field, field_id, field_name, display_value, readonly #}
+{% if field.field_type.value == 'bool' %}
+<select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target" {% if readonly %}disabled{% endif %}>
+    <option value="">-- Select --</option>
+    <option value="Y" {% if display_value == 'Y' or display_value == true %}selected{% endif %}>Yes</option>
+    <option value="N" {% if display_value == 'N' or display_value == false %}selected{% endif %}>No</option>
+</select>
+{% if readonly and display_value %}
+<input type="hidden" name="{{ field_name }}" value="{{ display_value }}">
+{% endif %}
+{% elif field.field_type.value == 'enum' %}
+<select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target" {% if readonly %}disabled{% endif %}>
+    <option value="">-- Select --</option>
+    {% for val in field.enum_values %}
+    <option value="{{ val }}" {% if display_value == val %}selected{% endif %}>{{ val }}</option>
+    {% endfor %}
+</select>
+{% if readonly and display_value %}
+<input type="hidden" name="{{ field_name }}" value="{{ display_value }}">
+{% endif %}
+{% elif field.field_type.value == 'date' %}
+<input type="date" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
+       class="berton-input touch-target" {% if readonly %}readonly{% endif %}>
+{% elif field.field_type.value == 'time' %}
+<input type="time" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
+       class="berton-input touch-target" {% if readonly %}readonly{% endif %}>
+{% elif field.field_type.value == 'number' %}
+<input type="number" step="any" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
+       class="berton-input touch-target" {% if readonly %}readonly{% endif %}>
+{% elif field.multi_value_count %}
+<div class="flex gap-2 flex-wrap">
+    {% for i in range(field.multi_value_count) %}
+    {% set mv = (display_value[i] if display_value is iterable and display_value is not string and display_value|length > i else '') %}
+    <input type="text" name="{{ field_name }}[]" value="{{ mv }}"
+           class="berton-input touch-target w-20" placeholder="{{ i + 1 }}">
+    {% endfor %}
+</div>
+{% else %}
+<input type="text" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
+       class="berton-input touch-target" {% if readonly %}readonly{% endif %}>
+{% endif %}

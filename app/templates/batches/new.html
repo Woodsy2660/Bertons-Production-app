@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Start New Run - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-8">
+        <a href="/" class="text-[var(--berton-burgundy)] hover:underline text-lg">&larr; Back to All Runs</a>
+        <h1 class="text-4xl text-[var(--berton-burgundy)] mt-3">Start a New Bottling Run</h1>
+        <p class="text-[var(--berton-text-muted)] mt-2 text-lg">
+            Upload the work order to begin. Label references are optional.
+        </p>
+    </div>
+
+    {% if error %}
+    <div class="berton-alert berton-alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form id="new-batch-form" action="/batches/new" method="POST" enctype="multipart/form-data" class="space-y-8">
+
+        <!-- Step 1: Work Order -->
+        <div class="berton-card p-6">
+            <div class="flex items-start mb-4">
+                <span class="step-number">1</span>
+                <div>
+                    <h2 class="text-2xl text-[var(--berton-burgundy)]">Upload Work Order</h2>
+                    <p class="berton-hint">This is the only required document. Operators will see it on screen during the run.</p>
+                </div>
+            </div>
+
+            <label for="work_order" class="upload-zone block" id="work-order-zone">
+                <input type="file" id="work_order" name="work_order" accept=".pdf" required
+                       class="hidden" onchange="handleWorkOrder(this)">
+                <div id="work-order-prompt">
+                    <svg class="mx-auto h-14 w-14 text-[var(--berton-gold)] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-xl font-semibold">Tap here to choose the work order PDF</p>
+                    <p class="berton-hint mt-1">or drag and drop the file here</p>
+                </div>
+                <div id="work-order-selected" class="hidden">
+                    <p class="text-lg font-semibold text-[var(--berton-success)]">&#10003; Work order selected</p>
+                    <p id="work-order-filename" class="text-[var(--berton-text-muted)] mt-1"></p>
+                    <p class="berton-hint mt-2">Tap again to choose a different file</p>
+                </div>
+            </label>
+
+            <div id="work-order-preview" class="hidden mt-6">
+                <p class="berton-label mb-2">Preview</p>
+                <iframe id="work-order-iframe" class="pdf-viewer" title="Work order preview"></iframe>
+            </div>
+        </div>
+
+        <!-- Step 2: Label References (optional) -->
+        <div class="berton-card p-6">
+            <div class="flex items-start mb-4">
+                <span class="step-number">2</span>
+                <div>
+                    <h2 class="text-2xl text-[var(--berton-burgundy)]">Label References <span class="text-lg font-normal text-[var(--berton-text-muted)]">(optional)</span></h2>
+                    <p class="berton-hint">Upload any label proof PDFs now, or add them later from the run page.</p>
+                </div>
+            </div>
+
+            <label for="label_references" class="upload-zone block" id="label-zone">
+                <input type="file" id="label_references" name="label_references" accept=".pdf" multiple
+                       class="hidden" onchange="handleLabelRefs(this)">
+                <p class="text-lg font-semibold">Tap here to add label reference PDFs</p>
+                <p class="berton-hint mt-1">You can select more than one file</p>
+            </label>
+            <ul id="label-list" class="mt-4 space-y-2 hidden"></ul>
+        </div>
+
+        <!-- Step 3: Run Number -->
+        <div class="berton-card p-6">
+            <div class="flex items-start mb-4">
+                <span class="step-number">3</span>
+                <div class="flex-1">
+                    <h2 class="text-2xl text-[var(--berton-burgundy)]">Run Number</h2>
+                    <p class="berton-hint">This is filled in automatically from the work order filename. Check it is correct.</p>
+                </div>
+            </div>
+
+            <label for="run_number" class="berton-label">Run Number</label>
+            <input type="text" id="run_number" name="run_number" required
+                   class="berton-input text-2xl font-semibold text-center"
+                   placeholder="e.g. 15646">
+        </div>
+
+        <!-- Submit -->
+        <div class="flex flex-col sm:flex-row gap-4 justify-end pt-2">
+            <a href="/" class="btn-secondary text-center">Cancel</a>
+            <button type="submit" id="submit-btn" class="btn-primary text-xl px-10" disabled>
+                Start Bottling Run
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block head %}
+<script>
+function extractRunNumber(filename) {
+    const base = filename.replace(/\.[^.]+$/, '');
+    const match = base.match(/\d{4,}/);
+    return match ? match[0] : '';
+}
+
+function handleWorkOrder(input) {
+    const zone = document.getElementById('work-order-zone');
+    const prompt = document.getElementById('work-order-prompt');
+    const selected = document.getElementById('work-order-selected');
+    const preview = document.getElementById('work-order-preview');
+    const iframe = document.getElementById('work-order-iframe');
+    const submitBtn = document.getElementById('submit-btn');
+    const runNumber = document.getElementById('run_number');
+
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        zone.classList.add('has-file');
+        prompt.classList.add('hidden');
+        selected.classList.remove('hidden');
+        document.getElementById('work-order-filename').textContent = file.name;
+        preview.classList.remove('hidden');
+        iframe.src = URL.createObjectURL(file);
+        submitBtn.disabled = false;
+
+        const detected = extractRunNumber(file.name);
+        if (detected && !runNumber.value) {
+            runNumber.value = detected;
+        }
+    }
+}
+
+function handleLabelRefs(input) {
+    const list = document.getElementById('label-list');
+    const zone = document.getElementById('label-zone');
+    list.innerHTML = '';
+
+    if (input.files && input.files.length > 0) {
+        zone.classList.add('has-file');
+        list.classList.remove('hidden');
+        for (const file of input.files) {
+            const li = document.createElement('li');
+            li.className = 'flex items-center gap-2 text-[var(--berton-text-muted)]';
+            li.innerHTML = '<span class="text-[var(--berton-success)]">&#10003;</span> ' + file.name;
+            list.appendChild(li);
+        }
+    } else {
+        zone.classList.remove('has-file');
+        list.classList.add('hidden');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('work-order-zone');
+    const input = document.getElementById('work_order');
+
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            input.files = e.dataTransfer.files;
+            handleWorkOrder(input);
+        }
+    });
+
+    document.getElementById('run_number').addEventListener('input', () => {
+        const wo = document.getElementById('work_order');
+        const submitBtn = document.getElementById('submit-btn');
+        submitBtn.disabled = !(wo.files.length && document.getElementById('run_number').value.trim());
+    });
+});
+</script>
+{% endblock %}

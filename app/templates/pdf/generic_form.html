@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ form_name }}</title>
+</head>
+<body>
+    <!-- Header Box -->
+    <div class="header-box">
+        <table style="border: none; width: 100%;">
+            <tr>
+                <td style="border: none; width: 70%;">
+                    <div class="form-title">{{ form_name }}</div>
+                    {% if doc_number %}
+                    <div class="doc-number">{{ doc_number }}</div>
+                    {% endif %}
+                </td>
+                <td style="border: none; text-align: right;">
+                    <strong>BERTON VINEYARDS</strong><br>
+                    <span style="font-size: 9pt;">Bottling Run Documentation</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Batch Info -->
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th style="width: 15%;">Run Number</th>
+            <td style="width: 35%;">{{ batch.run_number }}</td>
+            <th style="width: 15%;">Date</th>
+            <td style="width: 35%;">{{ header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-' }}</td>
+        </tr>
+        <tr>
+            <th>Product</th>
+            <td colspan="3">{{ header.product if header else '-' }}</td>
+        </tr>
+        {% if header and header.tank %}
+        <tr>
+            <th>Tank</th>
+            <td>{{ header.tank }}</td>
+            <th>Stock Item</th>
+            <td>{{ header.stock_item or '-' }}</td>
+        </tr>
+        {% endif %}
+    </table>
+
+    {% if form_template.accrual_mode.value == 'atomic' %}
+    <!-- Atomic Form: Display header payload fields -->
+    <table>
+        <tr>
+            <th style="width: 30%;">Field</th>
+            <th style="width: 70%;">Value</th>
+        </tr>
+        {% for field in form_template.header_fields %}
+        {% if field.source.value == 'operator' %}
+        <tr>
+            <td><strong>{{ field.label }}</strong></td>
+            <td>{{ header_payload.get(field.key, '-') or '-' }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </table>
+
+    {% elif form_template.accrual_mode.value == 'log' %}
+    <!-- Log Form: One row per reading -->
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Time</th>
+                <th>Operator</th>
+                {% for field in form_template.reading_fields %}
+                {% if field.key not in ['captured_at', 'initial', 'initials'] %}
+                <th>{{ field.label }}</th>
+                {% endif %}
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for reading in readings %}
+            <tr>
+                <td>{{ reading.sequence }}</td>
+                <td>{{ reading.captured_at.strftime('%H:%M') }}</td>
+                <td>{{ reading.operator_identifier }}</td>
+                {% for field in form_template.reading_fields %}
+                {% if field.key not in ['captured_at', 'initial', 'initials'] %}
+                <td>
+                    {% set val = reading.payload.get(field.key, '') %}
+                    {% if val is iterable and val is not string %}
+                        {{ val | join(', ') }}
+                    {% else %}
+                        {{ val or '-' }}
+                    {% endif %}
+                </td>
+                {% endif %}
+                {% endfor %}
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ form_template.reading_fields | length + 1 }}" style="text-align: center; color: #666;">
+                    No readings recorded
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% elif form_template.accrual_mode.value == 'matrix' %}
+    <!-- Matrix Form: One column per reading -->
+    <table>
+        <thead>
+            <tr>
+                <th>Check Item</th>
+                {% for reading in readings %}
+                <th style="text-align: center;">
+                    {{ reading.captured_at.strftime('%H:%M') }}<br>
+                    <small>{{ reading.operator_identifier }}</small>
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for field in form_template.reading_fields %}
+            {% if field.key not in ['captured_at', 'initial', 'initials'] %}
+            <tr>
+                <td><strong>{{ field.label }}</strong></td>
+                {% for reading in readings %}
+                <td style="text-align: center;">
+                    {% set val = reading.payload.get(field.key, '') %}
+                    {% if val is iterable and val is not string %}
+                        {% for v in val %}
+                        {{ v }}{% if not loop.last %}<br>{% endif %}
+                        {% endfor %}
+                    {% else %}
+                        {{ val or '-' }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Footer -->
+    <div style="margin-top: 20px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 10px;">
+        {% if form_instance and form_instance.submitted_by %}
+        Submitted by: {{ form_instance.submitted_by }}
+        {% if form_instance.submitted_at %}
+        at {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

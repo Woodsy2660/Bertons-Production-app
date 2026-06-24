@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: berton-postgres
+    environment:
+      POSTGRES_USER: berton
+      POSTGRES_PASSWORD: berton_dev
+      POSTGRES_DB: berton_bottling
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U berton -d berton_bottling"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Label Pick List</title>
+</head>
+<body>
+    <div class="header-box">
+        <table style="border: none; width: 100%;">
+            <tr>
+                <td style="border: none; width: 70%;">
+                    <div class="form-title">Label Pick List</div>
+                </td>
+                <td style="border: none; text-align: right;">
+                    <strong>BERTON VINEYARDS</strong><br>
+                    <span style="font-size: 9pt;">Packaging Documentation</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th>Run Number</th>
+            <td>{{ batch.run_number }}</td>
+            <th>Run Date</th>
+            <td>{{ header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-' }}</td>
+        </tr>
+        <tr>
+            <th>Packing Unit</th>
+            <td>{{ header.packing_unit if header else '-' }}</td>
+            <th>Packaging Line</th>
+            <td>{{ header.packaging_line if header else '-' }}</td>
+        </tr>
+        <tr>
+            <th>Run Quantity</th>
+            <td colspan="3">{{ header.run_quantity if header else '-' }}</td>
+        </tr>
+    </table>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Stock Item</th>
+                <th>Description</th>
+                <th>Required</th>
+                <th>Qty Supplied</th>
+                <th>Qty Returned</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set lines = header_payload.get('lines', []) or [] %}
+            {% for line in lines %}
+            <tr>
+                <td>{{ line.get('stock_item', '-') }}</td>
+                <td>{{ line.get('description', '-') }}</td>
+                <td>{{ line.get('required', '-') }}</td>
+                <td>{{ line.get('supplied_qty', '-') }}</td>
+                <td>{{ line.get('returned_qty', '-') }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; color: #666;">No label stock recorded</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 20px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 10px;">
+        {% if form_instance and form_instance.submitted_at %}
+        Submitted: {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% endif %}
+    </div>
+</body>
+</html>

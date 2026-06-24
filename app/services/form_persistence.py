@@ -1,0 +1,320 @@
+"""Shared form save logic for HTML routes and JSON API."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime
+from typing import Any
+
+from fastapi import HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.forms import FormType, get_form_template
+from app.models import (
+    AccrualMode as ModelAccrualMode,
+    Batch,
+    BatchStatus,
+    FormInstance,
+    FormStatus,
+    FormType as ModelFormType,
+    Reading,
+)
+
+
+def build_form_payload_from_mapping(
+    data: dict[str, Any],
+    exclude: set[str] | None = None,
+) -> dict[str, Any]:
+    """Build a JSON payload from a flat mapping, handling multi-value arrays."""
+    exclude = exclude or set()
+    payload: dict[str, Any] = {}
+    multi_value_fields: dict[str, list] = {}
+
+    for key, value in data.items():
+        if key in exclude:
+            continue
+        if key.endswith("[]"):
+            field_key = key[:-2]
+            if field_key not in multi_value_fields:
+                multi_value_fields[field_key] = []
+            if value is not None and str(value).strip():
+                multi_value_fields[field_key].append(value)
+        elif isinstance(value, list):
+            payload[key] = value if value else None
+        else:
+            payload[key] = value if value not in ("", None) else None
+
+    for key, values in multi_value_fields.items():
+        payload[key] = values if values else None
+
+    return payload
+
+
+def build_pick_list_lines(data: dict[str, Any]) -> list[dict]:
+    """Extract pick-list line rows from form/API data."""
+    lines = []
+    line_indices: set[int] = set()
+
+    for key in data:
+        if key.startswith("lines_") and "_stock_item" in key:
+            line_indices.add(int(key.split("_")[1]))
+
+    for idx in sorted(line_indices):
+        lines.append({
+            "stock_item": data.get(f"lines_{idx}_stock_item", ""),
+            "description": data.get(f"lines_{idx}_description", ""),
+            "required": data.get(f"lines_{idx}_required") or None,
+            "supplied_qty": data.get(f"lines_{idx}_supplied_qty") or None,
+            "returned_qty": data.get(f"lines_{idx}_returned_qty") or None,
+        })
+
+    return lines
+
+
+def reading_summary(form_type: str, payload: dict[str, Any]) -> str:
+    """Short summary for the readings table / status board."""
+    if form_type == "carton_qc":
+        table = payload.get("table", "")
+        if table == "carton_details" and payload.get("carton_code"):
+            return str(payload["carton_code"])
+        if table == "hourly_qc" and payload.get("record_carton_print"):
+            return str(payload["record_carton_print"])
+        return (table or "entry").replace("_", " ").title()
+
+    if form_type == "final_pallet_count":
+        region = payload.get("region", "")
+        if region == "bottles" and payload.get("pallet_no"):
+            return f"Pallet {payload['pallet_no']}"
+        if region == "finished" and payload.get("high") is not None:
+            return f"High: {payload['high']}"
+        return region.title() if region else "Entry"
+
+    if payload.get("batch_number"):
+        return str(payload["batch_number"])
+    if payload.get("section"):
+        return f"{payload['section']} — {payload.get('counter', '')}".strip(" —")
+    if payload.get("high") is not None:
+        return f"High: {payload['high']}"
+    return "Entry"
+
+
+def reading_row_extra(form_type: str, payload: dict[str, Any]) -> dict[str, str]:
+    """Extra columns for the readings table (section, region, etc.)."""
+    if form_type == "carton_qc":
+        table = payload.get("table", "")
+        return {"section": table.replace("_", " ").title() if table else ""}
+    if form_type == "final_pallet_count":
+        region = payload.get("region", "")
+        return {"section": region.title() if region else ""}
+    return {}
+
+
+def serialize_reading(reading: Reading, form_type: str) -> dict[str, Any]:
+    """JSON-serializable reading for API responses."""
+    payload = reading.payload or {}
+    return {
+        "id": str(reading.id),
+        "sequence": reading.sequence,
+        "captured_at": reading.captured_at.strftime("%H:%M"),
+        "operator_identifier": reading.operator_identifier,
+        "payload": payload,
+        "summary": reading_summary(form_type, payload),
+        **reading_row_extra(form_type, payload),
+    }
+
+
+async def get_open_batch(db: AsyncSession, batch_id: uuid.UUID) -> Batch:
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if batch.is_locked:
+        raise HTTPException(status_code=400, detail="Batch is locked")
+    return batch
+
+
+def _parse_captured_at(value: str | None) -> datetime:
+    if value:
+        today = date.today()
+        time_parts = value.split(":")
+        return datetime(
+            today.year,
+            today.month,
+            today.day,
+            int(time_parts[0]),
+            int(time_parts[1]) if len(time_parts) > 1 else 0,
+        )
+    return datetime.utcnow()
+
+
+async def save_atomic_form(
+    db: AsyncSession,
+    batch: Batch,
+    form_type: str,
+    payload: dict[str, Any],
+    *,
+    action: str = "save",
+) -> FormInstance:
+    """Save or submit an atomic form (daily production, pick list)."""
+    form_template = get_form_template(FormType(form_type))
+
+    fi_result = await db.execute(
+        select(FormInstance)
+        .where(FormInstance.batch_id == batch.id)
+        .where(FormInstance.form_type == ModelFormType(form_type))
+    )
+    form_instance = fi_result.scalar_one_or_none()
+
+    if form_instance:
+        form_instance.header_payload = payload
+        form_instance.last_edited_at = datetime.utcnow()
+        if action == "submit":
+            form_instance.status = FormStatus.SUBMITTED
+            form_instance.submitted_at = datetime.utcnow()
+            form_instance.submitted_by = payload.get("initials", "Unknown")
+        elif form_instance.status == FormStatus.SUBMITTED:
+            form_instance.status = FormStatus.EDITED_SINCE_SUBMIT
+        elif form_instance.status == FormStatus.NOT_STARTED:
+            form_instance.status = FormStatus.IN_PROGRESS
+    else:
+        form_instance = FormInstance(
+            batch_id=batch.id,
+            form_type=ModelFormType(form_type),
+            accrual_mode=ModelAccrualMode(form_template.accrual_mode.value),
+            status=FormStatus.SUBMITTED if action == "submit" else FormStatus.IN_PROGRESS,
+            header_payload=payload,
+            submitted_at=datetime.utcnow() if action == "submit" else None,
+            submitted_by=payload.get("initials") if action == "submit" else None,
+        )
+        db.add(form_instance)
+
+    if batch.status == BatchStatus.DRAFT:
+        batch.status = BatchStatus.IN_PROGRESS
+
+    await db.commit()
+    await db.refresh(form_instance)
+    return form_instance
+
+
+async def save_form_header(
+    db: AsyncSession,
+    batch: Batch,
+    form_type: str,
+    payload: dict[str, Any],
+) -> FormInstance:
+    """Save accrual form header fields (manufacturer, filters, etc.)."""
+    form_template = get_form_template(FormType(form_type))
+
+    fi_result = await db.execute(
+        select(FormInstance)
+        .where(FormInstance.batch_id == batch.id)
+        .where(FormInstance.form_type == ModelFormType(form_type))
+    )
+    form_instance = fi_result.scalar_one_or_none()
+
+    if form_instance:
+        form_instance.header_payload = payload
+        form_instance.last_edited_at = datetime.utcnow()
+        if form_instance.status == FormStatus.NOT_STARTED:
+            form_instance.status = FormStatus.IN_PROGRESS
+    else:
+        form_instance = FormInstance(
+            batch_id=batch.id,
+            form_type=ModelFormType(form_type),
+            accrual_mode=ModelAccrualMode(form_template.accrual_mode.value),
+            status=FormStatus.IN_PROGRESS,
+            header_payload=payload,
+        )
+        db.add(form_instance)
+
+    if batch.status == BatchStatus.DRAFT:
+        batch.status = BatchStatus.IN_PROGRESS
+
+    await db.commit()
+    await db.refresh(form_instance)
+    return form_instance
+
+
+async def add_reading(
+    db: AsyncSession,
+    batch: Batch,
+    form_type: str,
+    *,
+    operator_identifier: str,
+    captured_at: str | None,
+    payload: dict[str, Any],
+) -> tuple[FormInstance, Reading, int]:
+    """Append one reading to an accrual form. Returns instance, reading, total count."""
+    form_template = get_form_template(FormType(form_type))
+
+    fi_result = await db.execute(
+        select(FormInstance)
+        .where(FormInstance.batch_id == batch.id)
+        .where(FormInstance.form_type == ModelFormType(form_type))
+    )
+    form_instance = fi_result.scalar_one_or_none()
+
+    if not form_instance:
+        form_instance = FormInstance(
+            batch_id=batch.id,
+            form_type=ModelFormType(form_type),
+            accrual_mode=ModelAccrualMode(form_template.accrual_mode.value),
+            status=FormStatus.IN_PROGRESS,
+        )
+        db.add(form_instance)
+        await db.flush()
+
+    count_result = await db.execute(
+        select(func.count(Reading.id))
+        .where(Reading.form_instance_id == form_instance.id)
+    )
+    sequence = (count_result.scalar_one() or 0) + 1
+
+    reading = Reading(
+        form_instance_id=form_instance.id,
+        sequence=sequence,
+        captured_at=_parse_captured_at(captured_at),
+        operator_identifier=operator_identifier or "Unknown",
+        payload=payload,
+    )
+    db.add(reading)
+
+    if form_instance.status == FormStatus.SUBMITTED:
+        form_instance.status = FormStatus.EDITED_SINCE_SUBMIT
+    elif form_instance.status == FormStatus.NOT_STARTED:
+        form_instance.status = FormStatus.IN_PROGRESS
+    form_instance.last_edited_at = datetime.utcnow()
+
+    if batch.status == BatchStatus.DRAFT:
+        batch.status = BatchStatus.IN_PROGRESS
+
+    await db.commit()
+    await db.refresh(reading)
+    await db.refresh(form_instance)
+
+    return form_instance, reading, sequence
+
+
+async def submit_accrual_form(
+    db: AsyncSession,
+    batch_id: uuid.UUID,
+    form_type: str,
+    *,
+    submitted_by: str = "Operator",
+) -> FormInstance | None:
+    fi_result = await db.execute(
+        select(FormInstance)
+        .where(FormInstance.batch_id == batch_id)
+        .where(FormInstance.form_type == ModelFormType(form_type))
+    )
+    form_instance = fi_result.scalar_one_or_none()
+
+    if form_instance:
+        form_instance.status = FormStatus.SUBMITTED
+        form_instance.submitted_at = datetime.utcnow()
+        form_instance.submitted_by = submitted_by
+        await db.commit()
+        await db.refresh(form_instance)
+
+    return form_instance

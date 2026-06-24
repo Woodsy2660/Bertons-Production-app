@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Compile Test Run - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-8">
+    <div>
+        <a href="/" class="text-[var(--berton-burgundy)] hover:underline text-lg">&larr; All Runs</a>
+        <h1 class="text-4xl text-[var(--berton-burgundy)] mt-3">Compile Test Run</h1>
+        <p class="text-[var(--berton-text-muted)] text-lg mt-2">
+            A pre-filled bottling run for testing the final PDF compile. All 9 forms are submitted,
+            documents are attached, and the run is ready to compile.
+        </p>
+    </div>
+
+    {% if message %}
+    <div class="berton-alert berton-alert-info">{{ message }}</div>
+    {% endif %}
+
+    {% if request.query_params.get('error') %}
+    <div class="berton-alert berton-alert-error">Failed to create test run: {{ request.query_params.get('error') }}</div>
+    {% endif %}
+
+    <div class="berton-card p-6 space-y-4">
+        <h2 class="text-2xl text-[var(--berton-burgundy)]">Run {{ test_run_number }}</h2>
+
+        {% if batch %}
+        <p class="text-lg">Status: <span class="status-badge status-in-progress">{{ batch.status.value.replace('_', ' ').title() }}</span></p>
+
+        <ul class="space-y-2 text-[var(--berton-text-muted)]">
+            <li>&#10003; Mock EzyWine listing (2 pages)</li>
+            <li>&#10003; Work order PDF (from previous run)</li>
+            <li>&#10003; Label reference PDF(s)</li>
+            <li>&#10003; All 9 forms — submitted with sample data</li>
+        </ul>
+
+        <div class="flex flex-wrap gap-4 pt-4">
+            <a href="/batches/{{ batch.id }}" class="btn-primary text-lg">Open Test Run</a>
+            <form action="/dev/test-run/seed" method="POST" class="inline">
+                <button type="submit" class="btn-secondary">Re-seed (replace data)</button>
+            </form>
+        </div>
+
+        <div class="border-t border-[var(--berton-border)] pt-4 mt-4">
+            <h3 class="text-xl font-semibold text-[var(--berton-burgundy)] mb-2">To test compile</h3>
+            <ol class="list-decimal list-inside space-y-2 text-[var(--berton-text-muted)]">
+                <li>Open the test run above</li>
+                <li>Expand <strong>Manager Tools</strong> at the bottom of the page</li>
+                <li>Click <strong>Compile PDF</strong></li>
+                <li>Download the compiled document when complete</li>
+            </ol>
+        </div>
+        {% else %}
+        <p class="text-lg text-[var(--berton-text-muted)]">No test run exists yet. Click below to create one.</p>
+        <form action="/dev/test-run/seed" method="POST">
+            <button type="submit" class="btn-primary text-lg">Create Test Run</button>
+        </form>
+        {% endif %}
+    </div>
+
+    <div class="berton-card p-6">
+        <h2 class="text-xl text-[var(--berton-burgundy)] mb-3">What's included</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-[var(--berton-text-muted)]">
+            <div>Daily Production Sheet</div>
+            <div>Filler Line Check (3 readings)</div>
+            <div>Bottle Sealing Usage Log (2 readings)</div>
+            <div>Label Usage Sheet (3 sections)</div>
+            <div>Finished Product Line Check (2 readings)</div>
+            <div>Label Pick List</div>
+            <div>Carton Usage &amp; QC (carton + hourly)</div>
+            <div>Final Pallet Count (bottles + finished)</div>
+            <div>Finished Product Pallet Count (21 pallets)</div>
+        </div>
+        <p class="berton-hint mt-4">Based on reference run 15646 — Reserve 2022 Cab Sauvignon AI</p>
+    </div>
+</div>
+{% endblock %}
