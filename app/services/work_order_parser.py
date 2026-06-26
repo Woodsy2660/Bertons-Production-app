@@ -1,4 +1,5 @@
 import re
+from io import BytesIO
 from pathlib import Path
 
 from pypdf import PdfReader
@@ -10,8 +11,11 @@ LABEL_STOCK_RE = re.compile(r"^L[A-Z0-9]{3,14}$", re.IGNORECASE)
 _LABEL_SKIP = frozenset({"LABEL", "LINE", "LTR", "LIST", "LEFT"})
 
 
-def _extract_text(pdf_path: str | Path) -> str:
-    reader = PdfReader(str(pdf_path))
+def _extract_text(pdf_source: str | Path | bytes) -> str:
+    if isinstance(pdf_source, bytes):
+        reader = PdfReader(BytesIO(pdf_source))
+    else:
+        reader = PdfReader(str(pdf_source))
     parts = []
     for page in reader.pages:
         text = page.extract_text()
@@ -132,13 +136,13 @@ def _extract_label_pick_list_lines(text: str) -> list[dict]:
     return lines
 
 
-def parse_work_order_pdf(pdf_path: str | Path) -> dict:
+def parse_work_order_pdf(pdf_source: str | Path | bytes) -> dict:
     """
     Extract batch header and label pick-list lines from a work order PDF.
 
     pick_list_lines contains only label stock (Stock Item codes starting with L).
     """
-    text = _extract_text(pdf_path)
+    text = _extract_text(pdf_source)
 
     if not text.strip():
         return {

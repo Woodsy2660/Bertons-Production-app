@@ -9,6 +9,7 @@ from pypdf import PdfWriter, PdfReader
 
 from app.models import Batch, Compilation, FormInstance, UploadedDocument, DocumentSlot
 from app.forms import FormType, FORM_TEMPLATES, get_form_template
+from app.services.storage import build_compilation_path, open_pdf_reader, save_bytes
 
 
 # 16-slot compile template from spec
@@ -132,7 +133,7 @@ async def compile_batch(
             if docs:
                 doc = docs[0]  # Single upload slot
                 try:
-                    reader = PdfReader(doc.stored_path)
+                    reader = await open_pdf_reader(doc.stored_path)
                     for page in reader.pages:
                         pdf_writer.add_page(page)
                     slot_manifest[f"slot_{slot_num}"] = {
@@ -154,7 +155,7 @@ async def compile_batch(
             filenames = []
             for doc in docs:
                 try:
-                    reader = PdfReader(doc.stored_path)
+                    reader = await open_pdf_reader(doc.stored_path)
                     for page in reader.pages:
                         pdf_writer.add_page(page)
                     total_pages += len(reader.pages)
@@ -176,24 +177,27 @@ async def compile_batch(
     product = header.product if header else ""
     output_filename = sanitize_filename(f"{batch.run_number} {stock_item} {product}.pdf")
 
-    # Write final PDF
-    upload_path = Path(upload_dir)
-    output_path = upload_path / f"compiled_{batch.id}.pdf"
+    output_buffer = BytesIO()
+    pdf_writer.write(output_buffer)
+    output_bytes = output_buffer.getvalue()
 
-    with open(output_path, "wb") as f:
-        pdf_writer.write(f)
+    output_key = await build_compilation_path(batch.id)
+    stored_path = await save_bytes(output_key, output_bytes)
 
     server_path = None
     if compiled_output_dir:
+        temp_path = Path(compiled_output_dir) / f"compiled_{batch.id}.pdf"
+        temp_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path.write_bytes(output_bytes)
         server_path = save_compiled_to_server_folder(
-            output_path, output_filename, compiled_output_dir
+            temp_path, output_filename, compiled_output_dir
         )
 
     # Create compilation record
     compilation = Compilation(
         batch_id=batch.id,
         output_filename=output_filename,
-        stored_path=str(output_path),
+        stored_path=stored_path,
         slot_manifest={
             **slot_manifest,
             "server_folder_path": server_path,

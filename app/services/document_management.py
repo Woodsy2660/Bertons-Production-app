@@ -6,22 +6,20 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-import aiofiles
 from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Batch, BatchHeader, DocumentSlot, UploadedDocument
+from app.services.storage import delete_stored_file, read_bytes, save_bytes
 from app.services.work_order_parser import filter_label_lines, parse_work_order_pdf
 
 SINGLE_SLOT_TYPES = frozenset({DocumentSlot.WORK_ORDER, DocumentSlot.EZYWINE_LISTING})
 
 
-def remove_file_from_disk(stored_path: str | Path) -> None:
-    path = Path(stored_path)
-    if path.is_file():
-        path.unlink(missing_ok=True)
+async def remove_file_from_disk(stored_path: str | Path) -> None:
+    await delete_stored_file(str(stored_path))
 
 
 def apply_parsed_header(header: BatchHeader, parsed: dict) -> None:
@@ -75,7 +73,7 @@ async def get_batch_document(
 
 
 async def delete_uploaded_document(db: AsyncSession, doc: UploadedDocument) -> None:
-    remove_file_from_disk(doc.stored_path)
+    await remove_file_from_disk(doc.stored_path)
     await db.delete(doc)
     if doc.slot == DocumentSlot.LABEL_REFERENCE:
         await resequence_label_references(db, doc.batch_id)
@@ -92,7 +90,7 @@ async def clear_single_slot_documents(
         .where(UploadedDocument.slot == slot)
     )
     for old in result.scalars().all():
-        remove_file_from_disk(old.stored_path)
+        await remove_file_from_disk(old.stored_path)
         await db.delete(old)
 
 
@@ -104,7 +102,8 @@ async def refresh_header_from_work_order(
     if not batch.header:
         batch.header = BatchHeader(batch=batch)
         db.add(batch.header)
-    parsed = parse_work_order_pdf(stored_path)
+    content = await read_bytes(stored_path)
+    parsed = parse_work_order_pdf(content)
     apply_parsed_header(batch.header, parsed)
 
 
@@ -115,10 +114,7 @@ def validate_pdf_upload(file: UploadFile) -> None:
 
 async def replace_document_content(doc: UploadedDocument, file: UploadFile) -> None:
     validate_pdf_upload(file)
-    stored_path = Path(doc.stored_path)
-    stored_path.parent.mkdir(parents=True, exist_ok=True)
-    async with aiofiles.open(stored_path, "wb") as handle:
-        content = await file.read()
-        await handle.write(content)
+    content = await file.read()
+    doc.stored_path = await save_bytes(str(doc.stored_path), content)
     doc.original_filename = file.filename or doc.original_filename
     doc.uploaded_at = datetime.utcnow()

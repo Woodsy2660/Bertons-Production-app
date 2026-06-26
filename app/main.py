@@ -1,5 +1,4 @@
 import uuid
-import aiofiles
 from pathlib import Path
 from datetime import datetime, date
 from typing import Annotated
@@ -7,7 +6,7 @@ from typing import Annotated
 from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import RedirectResponse, Response, JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -63,6 +62,7 @@ from app.services.form_persistence import (
     save_form_header as persist_form_header,
     submit_accrual_form,
 )
+from app.services.storage import build_upload_path, read_bytes, save_bytes
 from app.services.work_order_parser import parse_work_order_pdf, filter_label_lines
 
 settings = get_settings()
@@ -94,7 +94,13 @@ async def auth_middleware(request: Request, call_next):
 
 # Insert before auth in the stack so SessionMiddleware runs first on each request.
 app.user_middleware.insert(
-    0, Middleware(SessionMiddleware, secret_key=settings.secret_key)
+    0,
+    Middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        https_only=settings.is_production,
+        same_site="lax",
+    ),
 )
 
 
@@ -173,21 +179,19 @@ async def save_uploaded_file(
     sequence: int = 0,
     uploaded_by: str = "Manager",
 ) -> UploadedDocument:
-    """Save an uploaded file to disk and return the document record."""
+    """Save an uploaded file and return the document record."""
     file_ext = Path(file.filename or "file.pdf").suffix or ".pdf"
     stored_filename = f"{batch_id}_{slot.value}_{sequence}{file_ext}"
-    stored_path = upload_path / stored_filename
-
-    async with aiofiles.open(stored_path, "wb") as f:
-        content = await file.read()
-        await f.write(content)
+    content = await file.read()
+    storage_key = await build_upload_path(batch_id, slot.value, sequence, file_ext)
+    stored_path = await save_bytes(storage_key, content)
 
     return UploadedDocument(
         batch_id=batch_id,
         slot=slot,
         sequence=sequence,
         original_filename=file.filename or stored_filename,
-        stored_path=str(stored_path),
+        stored_path=stored_path,
         uploaded_by=uploaded_by,
     )
 
@@ -344,7 +348,7 @@ async def create_batch(
     )
     db.add(work_order_doc)
 
-    parsed = parse_work_order_pdf(work_order_doc.stored_path)
+    parsed = parse_work_order_pdf(await read_bytes(work_order_doc.stored_path))
     header = BatchHeader(
         batch=batch,
         product=parsed.get("product"),
@@ -692,7 +696,7 @@ async def form_view(
         )
         work_order_doc = wo_result.scalar_one_or_none()
         if work_order_doc:
-            parsed = parse_work_order_pdf(work_order_doc.stored_path)
+            parsed = parse_work_order_pdf(await read_bytes(work_order_doc.stored_path))
             pick_list_lines = filter_label_lines(parsed.get("pick_list_lines") or [])
 
     form_readonly = not can_write_forms(batch, role)
@@ -969,8 +973,9 @@ async def view_upload(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    return FileResponse(
-        doc.stored_path,
+    content = await read_bytes(doc.stored_path)
+    return Response(
+        content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
     )
@@ -989,10 +994,13 @@ async def download_upload(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    return FileResponse(
-        doc.stored_path,
-        filename=doc.original_filename,
+    content = await read_bytes(doc.stored_path)
+    return Response(
+        content=content,
         media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{doc.original_filename}"'
+        },
     )
 
 
@@ -1009,10 +1017,13 @@ async def download_compilation(
     if not compilation:
         raise HTTPException(status_code=404, detail="Compilation not found")
 
-    return FileResponse(
-        compilation.stored_path,
-        filename=compilation.output_filename,
+    content = await read_bytes(compilation.stored_path)
+    return Response(
+        content=content,
         media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{compilation.output_filename}"'
+        },
     )
 
 

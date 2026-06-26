@@ -1,0 +1,8 @@
+tests/
+Documentation/
+compiled_output/
+uploads/
+agent-tools/
+terminals/
+*.jpg
+.git/
