@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.form_persistence import (
     build_form_payload_from_mapping,
     build_pick_list_lines,
@@ -47,3 +49,26 @@ def test_reading_summary_final_pallet_count():
         "final_pallet_count",
         {"region": "bottles", "pallet_no": "B-001"},
     ) == "Pallet B-001"
+
+
+def test_barcode_batch_field_keys():
+    from app.api.forms import BARCODE_BATCH_FIELDS
+
+    assert "batch_number" in BARCODE_BATCH_FIELDS
+    assert "batch_number_pallet_tag" in BARCODE_BATCH_FIELDS
+
+
+def test_require_operator_identifier_rejects_blank():
+    from fastapi import HTTPException
+
+    from app.services.form_persistence import require_operator_identifier
+
+    with pytest.raises(HTTPException) as exc:
+        require_operator_identifier("   ")
+    assert exc.value.status_code == 400
+
+
+def test_require_operator_identifier_accepts_value():
+    from app.services.form_persistence import require_operator_identifier
+
+    assert require_operator_identifier("  JSM  ") == "JSM"

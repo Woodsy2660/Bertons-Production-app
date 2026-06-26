@@ -1,172 +1,144 @@
 {% extends "base.html" %}
+{% from "batches/_document_actions.html" import doc_remove_form, doc_add_button, doc_label_row %}
 
 {% block title %}Run {{ batch.run_number }} - Berton Bottling{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
+<div class="space-y-8 {% if is_greyed %}run-readonly{% endif %}">
 
-    <!-- Page header -->
-    <div class="flex flex-wrap items-start justify-between gap-4">
+    <header class="page-header flex flex-wrap items-start justify-between gap-4">
         <div>
-            <a href="/" class="text-[var(--berton-burgundy)] hover:underline text-lg">&larr; All Runs</a>
-            <h1 class="text-4xl text-[var(--berton-burgundy)] mt-2">Run #{{ batch.run_number }}</h1>
-            {% if batch.is_locked %}
-            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">&#128274; This run is locked &mdash; contact your manager to make changes.</p>
+            <a href="/" class="back-link">&larr; Back to Runs</a>
+            <h1 class="text-4xl text-[var(--berton-burgundy)] mt-2">Run {{ batch.run_number }}</h1>
+            {% if batch.status.value == 'complete' %}
+            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">This run is complete and read-only.</p>
+            {% elif batch.status.value == 'reopened' and role == 'operator' %}
+            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">This run is under manager review. Forms cannot be edited.</p>
+            {% elif not can_edit_forms %}
+            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">This run is locked.</p>
             {% else %}
-            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">Review the work order below, then open your form to fill in.</p>
+            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">Review the work order, then open a form to enter data.</p>
             {% endif %}
         </div>
         <span class="status-badge
-            {% if batch.status.value == 'compiled' %}status-compiled
+            {% if batch.status.value == 'complete' %}status-complete
+            {% elif batch.status.value == 'awaiting_review' %}status-awaiting-review
             {% elif batch.status.value == 'in_progress' %}status-in-progress
             {% elif batch.status.value == 'reopened' %}status-reopened
-            {% else %}status-draft{% endif %}">
+            {% else %}status-in-progress{% endif %}">
             {{ batch.status.value.replace('_', ' ').title() }}
         </span>
-    </div>
+    </header>
 
-    <!-- Work Order — prominent at top -->
-    {% if work_order %}
-    <section class="berton-card p-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 class="text-3xl text-[var(--berton-burgundy)]">Work Order</h2>
-            <a href="/api/uploads/{{ work_order.id }}/download" class="btn-secondary text-base py-2">
-                Download PDF
-            </a>
-        </div>
-        <iframe
-            src="/uploads/{{ work_order.id }}/view"
-            class="pdf-viewer"
-            title="Work order for run {{ batch.run_number }}">
-        </iframe>
+    {% if role == 'manager' and can_mark_ready %}
+    <section class="berton-card p-6 section-review">
+        <h2 class="section-title mb-2">Awaiting Review</h2>
+        <p class="text-[var(--berton-text-muted)] mb-4">All forms are submitted. Proceed to upload the EzyWine listing and compile the final document.</p>
+        <form action="/batches/{{ batch.id }}/mark-ready" method="POST">
+            <button type="submit" class="btn-primary btn-gold">Mark Ready</button>
+        </form>
     </section>
-    {% else %}
-    <div class="berton-alert berton-alert-info">
-        No work order uploaded yet. Ask your manager to add one.
-    </div>
     {% endif %}
 
-    <!-- Label references (if any) -->
-    {% if label_references %}
     <section class="berton-card p-6">
-        <h2 class="text-2xl text-[var(--berton-burgundy)] mb-3">Label References</h2>
-        <ul class="space-y-2">
+        <h2 class="section-title mb-4">Work Order</h2>
+        {% if work_order %}
+        <iframe src="/uploads/{{ work_order.id }}/view" class="pdf-viewer" title="Work order for run {{ batch.run_number }}"></iframe>
+        {% if can_manage_documents %}
+        <div class="doc-manage-bar">
+            {{ doc_remove_form(batch, work_order, '/batches/' ~ batch.id|string) }}
+        </div>
+        {% endif %}
+        {% elif can_manage_documents %}
+        {{ doc_add_button(batch, 'work_order', '/batches/' ~ batch.id|string, 'work-order') }}
+        {% else %}
+        <p class="berton-hint">No work order uploaded yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="berton-card p-6">
+        <h2 class="section-title mb-3">Label References</h2>
+        <p class="berton-hint mb-4">Optional reference PDFs for operators and compilation.</p>
+        {% if label_references %}
+        <ul class="doc-list{% if can_manage_documents %} mb-4{% endif %}">
             {% for doc in label_references %}
-            <li class="flex items-center justify-between bg-[var(--berton-warm)] px-4 py-3 rounded">
-                <span class="text-lg">{{ doc.original_filename }}</span>
-                <a href="/uploads/{{ doc.id }}/view" target="_blank"
-                   class="text-[var(--berton-burgundy)] font-semibold hover:underline">View</a>
-            </li>
+            {{ doc_label_row(batch, doc, can_manage_documents, '/batches/' ~ batch.id|string) }}
             {% endfor %}
         </ul>
+        {% elif not can_manage_documents %}
+        <p class="berton-hint">No label references uploaded.</p>
+        {% endif %}
+        {% if can_manage_documents %}
+        {{ doc_add_button(batch, 'label_reference', '/batches/' ~ batch.id|string, 'label-ref-detail') }}
+        {% endif %}
     </section>
-    {% endif %}
 
-    <!-- Forms to fill out -->
     <section>
-        <h2 class="text-3xl text-[var(--berton-burgundy)] mb-2">Your Forms</h2>
+        <h2 class="section-title mb-2">Forms</h2>
         <p class="text-[var(--berton-text-muted)] text-lg mb-5">
-            {% if batch.is_locked %}
-            These forms are complete and locked.
+            {% if can_edit_forms %}
+            Select a form to enter or update data.
             {% else %}
-            Tap a form below to open it and enter your data.
+            These forms are read-only.
             {% endif %}
         </p>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="form-grid">
             {% for form_type, form_info in form_status.items() %}
+            {% if can_edit_forms %}
             <a href="/batches/{{ batch.id }}/forms/{{ form_type }}"
-               class="form-card
-                      {% if form_info.status == 'submitted' %}status-submitted-card
-                      {% elif form_info.status == 'in_progress' %}status-in-progress-card
-                      {% elif form_info.status == 'edited_since_submit' %}status-edited-card
-                      {% endif %}">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <h3 class="text-xl font-semibold text-[var(--berton-burgundy)]">{{ form_info.label }}</h3>
+               class="form-card {% if form_info.status == 'submitted' %}status-submitted-card{% elif form_info.status == 'in_progress' %}status-in-progress-card{% elif form_info.status == 'edited_since_submit' %}status-edited-card{% endif %}">
+            {% else %}
+            <div class="form-card form-card-locked {% if form_info.status == 'submitted' %}status-submitted-card{% endif %}">
+            {% endif %}
+                <div class="form-card-inner">
+                    <div class="form-card-content">
+                        <h3 class="form-card-title">{{ form_info.label }}</h3>
                         {% if form_info.doc_number %}
-                        <p class="text-[var(--berton-text-muted)] mt-1">{{ form_info.doc_number }}</p>
+                        <p class="form-card-doc">{{ form_info.doc_number }}</p>
+                        {% else %}
+                        <p class="form-card-doc form-card-doc--empty">&nbsp;</p>
                         {% endif %}
-                        {% if form_info.reading_count > 0 %}
-                        <p class="text-[var(--berton-text-muted)] mt-2">{{ form_info.reading_count }} reading{{ 's' if form_info.reading_count != 1 else '' }} entered</p>
-                        {% endif %}
+                        <p class="form-card-meta">
+                            {% if form_info.reading_count > 0 %}
+                            {{ form_info.reading_count }} entr{{ 'y' if form_info.reading_count == 1 else 'ies' }}
+                            {% else %}
+                            &nbsp;
+                            {% endif %}
+                        </p>
                     </div>
-                    <span class="status-badge whitespace-nowrap
+                    <span class="status-badge form-card-status
                         {% if form_info.status == 'submitted' %}status-submitted
                         {% elif form_info.status == 'in_progress' %}status-in-progress
                         {% elif form_info.status == 'edited_since_submit' %}status-edited
                         {% else %}status-not-started{% endif %}">
-                        {% if form_info.status == 'not_started' %}Not Started
-                        {% elif form_info.status == 'in_progress' %}In Progress
-                        {% elif form_info.status == 'submitted' %}Done
-                        {% elif form_info.status == 'edited_since_submit' %}Updated
-                        {% else %}{{ form_info.status.replace('_', ' ').title() }}{% endif %}
+                        {% with status=form_info.status %}{% include "batches/_form_status.html" %}{% endwith %}
                     </span>
                 </div>
-            </a>
+            {% if can_edit_forms %}</a>{% else %}</div>{% endif %}
             {% endfor %}
         </div>
     </section>
 
-    <!-- Manager tools — tucked away -->
-    <details class="manager-section berton-card p-6">
-        <summary>Manager Tools</summary>
-        <div class="mt-5 space-y-6">
-
-            <!-- EzyWine listing -->
-            <div>
-                <h3 class="text-xl font-semibold text-[var(--berton-burgundy)] mb-2">EzyWine Listing</h3>
-                {% if ezywine_listing %}
-                <div class="flex items-center justify-between bg-[var(--berton-warm)] px-4 py-3 rounded">
-                    <span>{{ ezywine_listing.original_filename }}</span>
-                    <a href="/api/uploads/{{ ezywine_listing.id }}/download" class="text-[var(--berton-burgundy)] font-semibold hover:underline">Download</a>
-                </div>
-                {% elif not batch.is_locked %}
-                <form action="/batches/{{ batch.id }}/upload" method="POST" enctype="multipart/form-data" class="flex flex-wrap gap-3 items-center">
-                    <input type="hidden" name="slot" value="ezywine_listing">
-                    <input type="file" name="file" accept=".pdf" required class="berton-input flex-1 min-w-[200px]">
-                    <button type="submit" class="btn-secondary">Upload</button>
-                </form>
-                {% else %}
-                <p class="text-[var(--berton-text-muted)]">Not uploaded.</p>
-                {% endif %}
-            </div>
-
-            <!-- Add more label references -->
-            {% if not batch.is_locked %}
-            <div>
-                <h3 class="text-xl font-semibold text-[var(--berton-burgundy)] mb-2">Add Label Reference</h3>
-                <form action="/batches/{{ batch.id }}/upload" method="POST" enctype="multipart/form-data" class="flex flex-wrap gap-3 items-center">
-                    <input type="hidden" name="slot" value="label_reference">
-                    <input type="file" name="file" accept=".pdf" required class="berton-input flex-1 min-w-[200px]">
-                    <button type="submit" class="btn-secondary">Add</button>
-                </form>
-            </div>
-            {% endif %}
-
-            <!-- Compile / download -->
-            {% if not batch.is_locked %}
-            <div>
-                <h3 class="text-xl font-semibold text-[var(--berton-burgundy)] mb-2">Compile Final Document</h3>
-                <p class="berton-hint mb-3">Combines all forms and uploads into one PDF. This locks the run.</p>
-                <form action="/batches/{{ batch.id }}/compile" method="POST">
-                    <button type="submit" class="btn-primary btn-gold">Compile PDF</button>
-                </form>
-            </div>
-            {% elif current_compilation %}
-            <div>
-                <h3 class="text-xl font-semibold text-[var(--berton-burgundy)] mb-2">Compiled Document</h3>
-                <p class="mb-3">{{ current_compilation.output_filename }}</p>
-                <p class="berton-hint mb-4">Compiled {{ current_compilation.compiled_at.strftime('%d %b %Y at %H:%M') }}</p>
-                <div class="flex flex-wrap gap-3">
-                    <a href="/api/compilations/{{ current_compilation.id }}/download" class="btn-primary">Download PDF</a>
-                    <form action="/batches/{{ batch.id }}/reopen" method="POST">
-                        <button type="submit" class="btn-secondary">Reopen Run</button>
-                    </form>
-                </div>
-            </div>
-            {% endif %}
-        </div>
-    </details>
+    {% if role == 'manager' and (current_compilation or stale_compilation or batch.status.value == 'reopened') %}
+    <section class="berton-card p-6">
+        <h2 class="section-title mb-4">Compiled Document</h2>
+        {% if current_compilation %}
+        <p class="mb-2">{{ current_compilation.output_filename }}</p>
+        <p class="berton-hint mb-4">Compiled {{ current_compilation.compiled_at.strftime('%d %b %Y at %H:%M') }}</p>
+        <a href="/api/compilations/{{ current_compilation.id }}/download" class="btn-primary">Download PDF</a>
+        {% endif %}
+        {% if stale_compilation and not current_compilation %}
+        <p class="berton-hint mb-4">Previous PDF is stale. Recompile from the completion page.</p>
+        {% endif %}
+        {% if can_reopen %}
+        <form action="/batches/{{ batch.id }}/reopen" method="POST" class="mt-4">
+            <button type="submit" class="btn-secondary">Reopen Run</button>
+        </form>
+        {% elif batch.status.value == 'reopened' %}
+        <a href="/batches/{{ batch.id }}/complete" class="btn-primary btn-gold mt-4 inline-block">Recompile Run</a>
+        {% endif %}
+    </section>
+    {% endif %}
 </div>
 {% endblock %}

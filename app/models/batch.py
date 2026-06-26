@@ -17,11 +17,14 @@ if TYPE_CHECKING:
 
 
 class BatchStatus(str, PyEnum):
-    DRAFT = "draft"
     IN_PROGRESS = "in_progress"
-    READY = "ready"
-    COMPILED = "compiled"
+    AWAITING_REVIEW = "awaiting_review"
+    COMPLETE = "complete"
     REOPENED = "reopened"
+    # Legacy DB values (pre-migration); mapped to complete in templates via .value
+    COMPILED = "complete"
+    DRAFT = "in_progress"
+    READY = "in_progress"
 
 
 class Batch(Base):
@@ -33,7 +36,7 @@ class Batch(Base):
     run_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     status: Mapped[BatchStatus] = mapped_column(
         pg_enum(BatchStatus, "batchstatus"),
-        default=BatchStatus.DRAFT,
+        default=BatchStatus.IN_PROGRESS,
         nullable=False,
     )
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

@@ -50,6 +50,7 @@ BOTTLE_SEALING_TEMPLATE = FormTemplate(
             label="Batch number",
             field_type=FieldType.TEXT,
             source=FieldSource.OPERATOR,
+            barcode_scan=True,
         ),
         FieldDef(
             key="matches_work_order",

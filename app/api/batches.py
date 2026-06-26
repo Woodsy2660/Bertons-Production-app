@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.auth import Role, require_manager, require_operator_or_manager
 from app.database import get_db
 from app.models import Batch, BatchHeader
 from app.schemas import BatchCreate, BatchResponse, BatchListResponse
@@ -17,6 +18,7 @@ router = APIRouter()
 async def create_batch(
     batch_data: BatchCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
 ) -> Batch:
     """Create a new batch with optional header data."""
     # Check if run_number already exists
@@ -67,6 +69,7 @@ async def create_batch(
 @router.get("/", response_model=BatchListResponse)
 async def list_batches(
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
     skip: int = 0,
     limit: int = 100,
 ) -> dict:
@@ -92,6 +95,7 @@ async def list_batches(
 async def get_batch(
     batch_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ) -> Batch:
     """Get a single batch by ID."""
     result = await db.execute(
@@ -114,6 +118,7 @@ async def get_batch(
 async def get_batch_by_run_number(
     run_number: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ) -> Batch:
     """Get a single batch by run number."""
     result = await db.execute(

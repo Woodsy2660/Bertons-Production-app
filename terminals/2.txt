@@ -1,0 +1,121 @@
+---
+pid: 42748
+cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
+command: "pip install weasyprint pypdf aiofiles httpx -q; cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\"; python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 2>&1"
+started_at: 2026-06-25T05:31:56.145Z
+running_for_ms: 3030003  
+---
+  WARNING: The scripts fonttools.exe, pyftmerge.exe, pyftsubset.exe and ttx.exe are installed in 'C:\Users\bwood\AppData\Roaming\Python\Python313\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script weasyprint.exe is installed in 'C:\Users\bwood\AppData\Roaming\Python\Python313\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
+[notice] A new release of pip is available: 25.1.1 -> 26.1.2
+[notice] To update, run: python.exe -m pip install --upgrade pip
+
+-----
+
+WeasyPrint could not import some external libraries. Please carefully follow the installation steps before reporting an issue:
+https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation
+https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting 
+
+-----
+
+python : Traceback (most recent call last):
+At line:1 char:110
++ ... ction-app"; python -m uvicorn app.main:app --host 127.0.0.1 --port 80 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\click\core.py", line 1485, in __call__
+    return self.main(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\click\core.py", line 1406, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\click\core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\click\core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\main.py", line 433, in main
+    run(
+    ~~~^
+        app,
+        ^^^^
+    ...<47 lines>...
+        h11_max_incomplete_event_size=h11_max_incomplete_event_size,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\main.py", line 606, in run
+    server.run()
+    ~~~~~~~~~~^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\server.py", line 79, in serve
+    await self._serve(sockets)
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\server.py", line 86, in _serve
+    config.load()
+    ~~~~~~~~~~~^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\config.py", line 441, in load
+    self.loaded_app = import_from_string(self.app)
+                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\uvicorn\importer.py", line 19, in 
+import_from_string
+    module = importlib.import_module(module_str)
+  File "C:\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app\app\main.py", line 48, in <module>
+    from app.services.compilation import compile_batch
+  File "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app\app\services\compilation.py", line 8, in <module>
+    from weasyprint import HTML, CSS
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\weasyprint\__init__.py", line 371, in <module>
+    from .css import preprocess_stylesheet  # noqa: I001, E402
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\weasyprint\css\__init__.py", line 29, in <module>
+    from ..text.fonts import FontConfiguration
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\weasyprint\text\fonts.py", line 17, in <module>
+    from .constants import (  # isort:skip
+        CAPS_KEYS, EAST_ASIAN_KEYS, FONTCONFIG_STRETCH, FONTCONFIG_STYLE, FONTCONFIG_WEIGHT,
+        LIGATURE_KEYS, NUMERIC_KEYS, PANGO_STRETCH, PANGO_STYLE, PANGO_VARIANT)
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\weasyprint\text\constants.py", line 5, in 
+<module>
+    from .ffi import pango
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\weasyprint\text\ffi.py", line 476, in <module>
+    gobject = _dlopen(
+        ffi, 'libgobject-2.0-0', 'gobject-2.0-0', 'gobject-2.0',
+        'libgobject-2.0.so.0', 'libgobject-2.0.0.dylib', 'libgobject-2.0-0.dll')
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\weasyprint\text\ffi.py", line 464, in _dlopen
+    return ffi.dlopen(names[0], flags)  # pragma: no cover
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\cffi\api.py", line 150, in dlopen
+    lib, function_cache = _make_ffi_library(self, name, flags)
+                          ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\cffi\api.py", line 834, in _make_ffi_library
+    backendlib = _load_backend_lib(backend, libname, flags)
+  File "C:\Users\bwood\AppData\Roaming\Python\Python313\site-packages\cffi\api.py", line 829, in _load_backend_lib
+    raise OSError(msg)
+OSError: cannot load library 'libgobject-2.0-0': error 0x7e.  Additionally, ctypes.util.find_library() did not manage 
+to locate a library called 'libgobject-2.0-0'

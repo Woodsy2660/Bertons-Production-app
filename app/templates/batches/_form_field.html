@@ -36,6 +36,33 @@
     {% endfor %}
 </div>
 {% else %}
+{% if field.barcode_scan and not readonly %}
+<div class="barcode-field">
+    <div class="barcode-field-row">
+        <input type="text" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
+               class="berton-input touch-target js-barcode-input" data-barcode-scan
+               placeholder="Scan QR left of batch no., or type"
+               {% if readonly %}readonly{% endif %}>
+        <button type="button" class="barcode-scan-btn touch-target" data-barcode-scan-trigger="{{ field_id }}"
+                title="Focus for handheld scanner" aria-label="Focus {{ field.label }} for handheld scanner">
+            <svg class="barcode-scan-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M2 6h2v12H2V6zm3 0h1v12H5V6zm2 0h3v12H7V6zm4 0h1v12h-1V6zm2 0h4v12h-4V6zm5 0h1v12h-1V6zm2 0h2v12h-2V6zM4 8H3V7h1v1zm0 2H3v-1h1v1zm0 2H3v-1h1v1zm14-4h-1V7h1v1zm0 2h-1v-1h1v1zm0 2h-1v-1h1v1z"/>
+            </svg>
+            <span>Gun</span>
+        </button>
+        <button type="button" class="barcode-scan-btn barcode-camera-btn touch-target" data-barcode-camera-trigger="{{ field_id }}"
+                title="Scan the square QR code left of the batch number on the label"
+                aria-label="Scan QR code for {{ field.label }}">
+            <svg class="barcode-scan-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M9.5 4A2.5 2.5 0 0 0 7 6.5V7H5a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-8a3 3 0 0 0-3-3h-2v-.5A2.5 2.5 0 0 0 14.5 4h-5zm0 2h5a.5.5 0 0 1 .5.5V7h-6v-.5A.5.5 0 0 1 9.5 6zM12 17a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+            </svg>
+            <span>Camera</span>
+        </button>
+    </div>
+    <p class="barcode-field-status" data-state="idle">Camera: scan QR left of batch no. on label</p>
+</div>
+{% else %}
 <input type="text" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
        class="berton-input touch-target" {% if readonly %}readonly{% endif %}>
+{% endif %}
 {% endif %}

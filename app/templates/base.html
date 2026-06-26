@@ -19,12 +19,13 @@
                     <a href="/" class="brand text-white no-underline">Berton Vineyards</a>
                     <span class="subtitle hidden sm:inline">Bottling Production</span>
                 </div>
-                <div class="flex items-center gap-2">
-                    <a href="/" class="touch-target">All Runs</a>
-                    <a href="/batches/new" class="touch-target">New Run</a>
-                    <a href="/operators" class="touch-target">Operators</a>
-                    {% if debug %}
-                    <a href="/dev/test-run" class="touch-target">Test Run</a>
+                <div class="flex items-center gap-3">
+                    {% set nav_role = get_role(request) %}
+                    {% if nav_role %}
+                    <span class="role-badge role-{{ nav_role }}">{{ nav_role|title }}</span>
+                    <form action="/logout" method="POST" class="inline">
+                        <button type="submit" class="touch-target bg-transparent border-0 cursor-pointer text-white">Sign Out</button>
+                    </form>
                     {% endif %}
                 </div>
             </div>

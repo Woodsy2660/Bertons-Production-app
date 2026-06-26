@@ -1,10 +1,10 @@
 import re
+import shutil
 from pathlib import Path
 from datetime import datetime
 from io import BytesIO
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML, CSS
 from pypdf import PdfWriter, PdfReader
 
 from app.models import Batch, Compilation, FormInstance, UploadedDocument, DocumentSlot
@@ -46,7 +46,27 @@ def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', '', name)
 
 
-async def compile_batch(batch: Batch, db, upload_dir: str) -> Compilation:
+def save_compiled_to_server_folder(
+    source_path: Path,
+    output_filename: str,
+    compiled_output_dir: str,
+) -> str:
+    """Copy the compiled PDF to the local server folder for archival."""
+    dest_dir = Path(compiled_output_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / output_filename
+    shutil.copy2(source_path, dest_path)
+    return str(dest_path)
+
+
+async def compile_batch(
+    batch: Batch,
+    db,
+    upload_dir: str,
+    *,
+    compiled_output_dir: str | None = None,
+    compiled_by: str = "Manager",
+) -> Compilation:
     """
     Compile a batch into a single PDF document.
 
@@ -163,14 +183,23 @@ async def compile_batch(batch: Batch, db, upload_dir: str) -> Compilation:
     with open(output_path, "wb") as f:
         pdf_writer.write(f)
 
+    server_path = None
+    if compiled_output_dir:
+        server_path = save_compiled_to_server_folder(
+            output_path, output_filename, compiled_output_dir
+        )
+
     # Create compilation record
     compilation = Compilation(
         batch_id=batch.id,
         output_filename=output_filename,
         stored_path=str(output_path),
-        slot_manifest=slot_manifest,
+        slot_manifest={
+            **slot_manifest,
+            "server_folder_path": server_path,
+        },
         is_current=True,
-        compiled_by="Manager",
+        compiled_by=compiled_by,
         compiled_at=datetime.utcnow(),
     )
 
@@ -248,9 +277,28 @@ def render_form_to_pdf(
         }}
     """
 
-    # Render PDF
-    html = HTML(string=html_content)
-    css = CSS(string=css_content)
+    full_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>{css_content}</style></head>
+<body>{html_content}</body></html>"""
 
-    pdf_bytes = html.write_pdf(stylesheets=[css])
-    return pdf_bytes
+    # Prefer WeasyPrint; fall back to xhtml2pdf (pure Python, works on Windows).
+    try:
+        from weasyprint import CSS, HTML
+
+        html = HTML(string=full_html)
+        css = CSS(string=css_content)
+        return html.write_pdf(stylesheets=[css])
+    except (ImportError, OSError):
+        pass
+
+    try:
+        from xhtml2pdf import pisa
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF rendering unavailable. Install xhtml2pdf or WeasyPrint system libraries."
+        ) from exc
+
+    buffer = BytesIO()
+    if pisa.CreatePDF(full_html, dest=buffer).err:
+        raise RuntimeError("PDF rendering failed while generating a form page.")
+    return buffer.getvalue()

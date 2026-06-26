@@ -5,7 +5,7 @@
 {% block content %}
 <div class="max-w-3xl mx-auto">
     <div class="mb-8">
-        <a href="/" class="text-[var(--berton-burgundy)] hover:underline text-lg">&larr; Back to All Runs</a>
+        <a href="/" class="back-link">&larr; Back to Runs</a>
         <h1 class="text-4xl text-[var(--berton-burgundy)] mt-3">Start a New Bottling Run</h1>
         <p class="text-[var(--berton-text-muted)] mt-2 text-lg">
             Upload the work order to begin. Label references are optional.
@@ -36,13 +36,13 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <p class="text-xl font-semibold">Tap here to choose the work order PDF</p>
+                    <p class="text-xl font-semibold">Select work order PDF</p>
                     <p class="berton-hint mt-1">or drag and drop the file here</p>
                 </div>
                 <div id="work-order-selected" class="hidden">
-                    <p class="text-lg font-semibold text-[var(--berton-success)]">&#10003; Work order selected</p>
+                    <p class="text-lg font-semibold text-[var(--berton-success)]">Work order selected</p>
                     <p id="work-order-filename" class="text-[var(--berton-text-muted)] mt-1"></p>
-                    <p class="berton-hint mt-2">Tap again to choose a different file</p>
+                    <p class="berton-hint mt-2">Select again to choose a different file</p>
                 </div>
             </label>
 
@@ -65,7 +65,7 @@
             <label for="label_references" class="upload-zone block" id="label-zone">
                 <input type="file" id="label_references" name="label_references" accept=".pdf" multiple
                        class="hidden" onchange="handleLabelRefs(this)">
-                <p class="text-lg font-semibold">Tap here to add label reference PDFs</p>
+                <p class="text-lg font-semibold">Select label reference PDFs</p>
                 <p class="berton-hint mt-1">You can select more than one file</p>
             </label>
             <ul id="label-list" class="mt-4 space-y-2 hidden"></ul>
@@ -143,7 +143,7 @@ function handleLabelRefs(input) {
         for (const file of input.files) {
             const li = document.createElement('li');
             li.className = 'flex items-center gap-2 text-[var(--berton-text-muted)]';
-            li.innerHTML = '<span class="text-[var(--berton-success)]">&#10003;</span> ' + file.name;
+            li.textContent = file.name;
             list.appendChild(li);
         }
     } else {

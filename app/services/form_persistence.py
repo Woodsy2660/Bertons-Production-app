@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.session import Role
 from app.forms import FormType, get_form_template
 from app.models import (
     AccrualMode as ModelAccrualMode,
@@ -19,6 +20,10 @@ from app.models import (
     FormStatus,
     FormType as ModelFormType,
     Reading,
+)
+from app.services.batch_lifecycle import (
+    assert_can_write_forms,
+    maybe_transition_to_awaiting_review,
 )
 
 
@@ -124,14 +129,33 @@ def serialize_reading(reading: Reading, form_type: str) -> dict[str, Any]:
     }
 
 
-async def get_open_batch(db: AsyncSession, batch_id: uuid.UUID) -> Batch:
+def require_operator_identifier(value: str | None, *, field: str = "operator_identifier") -> str:
+    identifier = (value or "").strip()
+    if not identifier:
+        raise HTTPException(status_code=400, detail=f"{field} is required")
+    return identifier
+
+
+async def get_batch_for_write(
+    db: AsyncSession,
+    batch_id: uuid.UUID,
+    role: Role,
+) -> Batch:
     result = await db.execute(select(Batch).where(Batch.id == batch_id))
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if batch.is_locked:
-        raise HTTPException(status_code=400, detail="Batch is locked")
+    assert_can_write_forms(batch, role)
     return batch
+
+
+async def get_open_batch(
+    db: AsyncSession,
+    batch_id: uuid.UUID,
+    role: Role = "operator",
+) -> Batch:
+    """Backward-compatible alias used by API routes."""
+    return await get_batch_for_write(db, batch_id, role)
 
 
 def _parse_captured_at(value: str | None) -> datetime:
@@ -155,9 +179,18 @@ async def save_atomic_form(
     payload: dict[str, Any],
     *,
     action: str = "save",
+    role: Role = "operator",
 ) -> FormInstance:
     """Save or submit an atomic form (daily production, pick list)."""
+    assert_can_write_forms(batch, role)
     form_template = get_form_template(FormType(form_type))
+
+    submitted_by: str | None = None
+    if action == "submit":
+        submitted_by = require_operator_identifier(
+            payload.get("initials") or payload.get("operator_identifier"),
+            field="initials",
+        )
 
     fi_result = await db.execute(
         select(FormInstance)
@@ -172,7 +205,8 @@ async def save_atomic_form(
         if action == "submit":
             form_instance.status = FormStatus.SUBMITTED
             form_instance.submitted_at = datetime.utcnow()
-            form_instance.submitted_by = payload.get("initials", "Unknown")
+            form_instance.submitted_by = submitted_by
+            form_instance.last_edited_by = submitted_by
         elif form_instance.status == FormStatus.SUBMITTED:
             form_instance.status = FormStatus.EDITED_SINCE_SUBMIT
         elif form_instance.status == FormStatus.NOT_STARTED:
@@ -185,13 +219,15 @@ async def save_atomic_form(
             status=FormStatus.SUBMITTED if action == "submit" else FormStatus.IN_PROGRESS,
             header_payload=payload,
             submitted_at=datetime.utcnow() if action == "submit" else None,
-            submitted_by=payload.get("initials") if action == "submit" else None,
+            submitted_by=submitted_by,
+            last_edited_by=submitted_by if action == "submit" else None,
         )
         db.add(form_instance)
 
-    if batch.status == BatchStatus.DRAFT:
+    if batch.status == BatchStatus.REOPENED and action == "submit":
         batch.status = BatchStatus.IN_PROGRESS
 
+    await maybe_transition_to_awaiting_review(db, batch)
     await db.commit()
     await db.refresh(form_instance)
     return form_instance
@@ -202,8 +238,11 @@ async def save_form_header(
     batch: Batch,
     form_type: str,
     payload: dict[str, Any],
+    *,
+    role: Role = "operator",
 ) -> FormInstance:
     """Save accrual form header fields (manufacturer, filters, etc.)."""
+    assert_can_write_forms(batch, role)
     form_template = get_form_template(FormType(form_type))
 
     fi_result = await db.execute(
@@ -228,9 +267,6 @@ async def save_form_header(
         )
         db.add(form_instance)
 
-    if batch.status == BatchStatus.DRAFT:
-        batch.status = BatchStatus.IN_PROGRESS
-
     await db.commit()
     await db.refresh(form_instance)
     return form_instance
@@ -244,8 +280,11 @@ async def add_reading(
     operator_identifier: str,
     captured_at: str | None,
     payload: dict[str, Any],
+    role: Role = "operator",
 ) -> tuple[FormInstance, Reading, int]:
     """Append one reading to an accrual form. Returns instance, reading, total count."""
+    assert_can_write_forms(batch, role)
+    operator_identifier = require_operator_identifier(operator_identifier)
     form_template = get_form_template(FormType(form_type))
 
     fi_result = await db.execute(
@@ -275,7 +314,7 @@ async def add_reading(
         form_instance_id=form_instance.id,
         sequence=sequence,
         captured_at=_parse_captured_at(captured_at),
-        operator_identifier=operator_identifier or "Unknown",
+        operator_identifier=operator_identifier,
         payload=payload,
     )
     db.add(reading)
@@ -285,9 +324,7 @@ async def add_reading(
     elif form_instance.status == FormStatus.NOT_STARTED:
         form_instance.status = FormStatus.IN_PROGRESS
     form_instance.last_edited_at = datetime.utcnow()
-
-    if batch.status == BatchStatus.DRAFT:
-        batch.status = BatchStatus.IN_PROGRESS
+    form_instance.last_edited_by = operator_identifier
 
     await db.commit()
     await db.refresh(reading)
@@ -301,8 +338,16 @@ async def submit_accrual_form(
     batch_id: uuid.UUID,
     form_type: str,
     *,
-    submitted_by: str = "Operator",
+    submitted_by: str,
+    role: Role = "operator",
 ) -> FormInstance | None:
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    assert_can_write_forms(batch, role)
+    submitted_by = require_operator_identifier(submitted_by, field="submitted_by")
+
     fi_result = await db.execute(
         select(FormInstance)
         .where(FormInstance.batch_id == batch_id)
@@ -310,11 +355,27 @@ async def submit_accrual_form(
     )
     form_instance = fi_result.scalar_one_or_none()
 
-    if form_instance:
-        form_instance.status = FormStatus.SUBMITTED
-        form_instance.submitted_at = datetime.utcnow()
-        form_instance.submitted_by = submitted_by
-        await db.commit()
-        await db.refresh(form_instance)
+    if not form_instance:
+        return None
+
+    count_result = await db.execute(
+        select(func.count(Reading.id))
+        .where(Reading.form_instance_id == form_instance.id)
+    )
+    if (count_result.scalar_one() or 0) == 0:
+        raise HTTPException(status_code=400, detail="Add at least one entry before submitting")
+
+    form_instance.status = FormStatus.SUBMITTED
+    form_instance.submitted_at = datetime.utcnow()
+    form_instance.submitted_by = submitted_by
+    form_instance.last_edited_by = submitted_by
+    form_instance.last_edited_at = datetime.utcnow()
+
+    if batch.status == BatchStatus.REOPENED:
+        batch.status = BatchStatus.IN_PROGRESS
+
+    await maybe_transition_to_awaiting_review(db, batch)
+    await db.commit()
+    await db.refresh(form_instance)
 
     return form_instance

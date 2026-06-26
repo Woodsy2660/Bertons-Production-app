@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "batches/_document_actions.html" import doc_remove_form, doc_add_button, doc_label_row %}
+
+{% block title %}{% if is_recompile %}Recompile{% else %}Complete{% endif %} Run {{ batch.run_number }} - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="space-y-8 max-w-4xl mx-auto">
+    <header class="page-header">
+        <a href="/batches/{{ batch.id }}" class="back-link">&larr; Back to Run</a>
+        <h1 class="text-4xl text-[var(--berton-burgundy)] mt-2">
+            {% if is_recompile %}Recompile{% else %}Complete{% endif %} Run {{ batch.run_number }}
+        </h1>
+        <p class="text-[var(--berton-text-muted)] text-lg mt-2">
+            Upload the EzyWine listing and any label references, then compile and save the final PDF.
+        </p>
+    </header>
+
+    {% if compile_error %}
+    <div class="berton-alert berton-alert-error">
+        <strong>Compile failed.</strong> {{ compile_error }}
+    </div>
+    {% endif %}
+
+    <section class="berton-card p-6 space-y-4">
+        <h2 class="section-title">EzyWine Bottling Run Complete Listing</h2>
+        <p class="berton-hint">Required before compile.</p>
+        {% if ezywine_listing %}
+        {% if can_manage_documents %}
+        <div class="doc-manage-bar">
+            {{ doc_remove_form(batch, ezywine_listing, '/batches/' ~ batch.id|string ~ '/complete') }}
+        </div>
+        {% else %}
+        <p class="doc-row-name">{{ ezywine_listing.original_filename }}</p>
+        {% endif %}
+        {% elif can_manage_documents %}
+        {{ doc_add_button(batch, 'ezywine_listing', '/batches/' ~ batch.id|string ~ '/complete', 'listing') }}
+        {% endif %}
+    </section>
+
+    <section class="berton-card p-6 space-y-4">
+        <h2 class="section-title">Label Reference PDFs</h2>
+        <p class="berton-hint">Optional. Upload zero or more label reference documents.</p>
+        {% if label_references %}
+        <ul class="doc-list{% if can_manage_documents %} mb-4{% endif %}">
+            {% for doc in label_references %}
+            {{ doc_label_row(batch, doc, can_manage_documents, '/batches/' ~ batch.id|string ~ '/complete') }}
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if can_manage_documents %}
+        {{ doc_add_button(batch, 'label_reference', '/batches/' ~ batch.id|string ~ '/complete', 'label-ref-complete') }}
+        {% endif %}
+    </section>
+
+    <section class="berton-card p-6">
+        <h2 class="section-title mb-2">Compile and Save</h2>
+        <p class="berton-hint mb-4">
+            Merges all forms and uploads into the final PDF and saves a copy to the server folder.
+            This marks the run as Complete.
+        </p>
+        {% if is_recompile %}
+        <p class="berton-alert berton-alert-info mb-4">The previous PDF will be marked stale when you recompile.</p>
+        {% endif %}
+        <form action="/batches/{{ batch.id }}/compile" method="POST">
+            <button type="submit" class="btn-primary btn-gold" {% if not ezywine_listing %}disabled{% endif %}>
+                {% if is_recompile %}Recompile and Save{% else %}Compile and Save{% endif %}
+            </button>
+        </form>
+        {% if not ezywine_listing %}
+        <p class="berton-hint mt-3">Upload the EzyWine listing above to enable compile.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

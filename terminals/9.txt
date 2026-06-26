@@ -1,0 +1,13 @@
+---
+pid: 17664
+cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
+command: "Stop-Process -Id 27932 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 33732 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\"; python -m uvicorn app.main:app --host 127.0.0.1 --port 8001"
+started_at: 2026-06-25T06:00:37.490Z
+running_for_ms: 1320008  
+---
+INFO:     Started server process [22224]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8001): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

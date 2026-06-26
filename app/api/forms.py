@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import Role, require_operator_or_manager
 from app.database import get_db
 from app.forms import FormType
 from app.models import FormInstance, FormType as ModelFormType, Reading
@@ -26,6 +27,9 @@ from app.services.form_persistence import (
 )
 
 router = APIRouter()
+
+# Field keys that accept barcode scans (extend when lookup is wired to ERP).
+BARCODE_BATCH_FIELDS = frozenset({"batch_number", "batch_number_pallet_tag"})
 
 
 class SaveResponse(BaseModel):
@@ -51,10 +55,39 @@ class ReadingCreate(BaseModel):
     captured_at: str | None = None
 
 
+class AccrualSubmitBody(BaseModel):
+    submitted_by: str = Field(..., min_length=1)
+
+
 def _reading_count_query(form_instance_id: uuid.UUID):
     return select(func.count(Reading.id)).where(
         Reading.form_instance_id == form_instance_id
     )
+
+
+@router.get("/{batch_id}/barcode-lookup")
+async def barcode_lookup(
+    batch_id: uuid.UUID,
+    code: str,
+    form_type: str,
+    field: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+) -> dict[str, Any]:
+    """
+    Stub for future ERP/EzyWine barcode lookup.
+
+    Returns the scanned code and optional prefill map for related fields.
+    """
+    await get_open_batch(db, batch_id, role)
+    normalized = code.strip()
+    if not normalized or field not in BARCODE_BATCH_FIELDS:
+        return {"code": normalized, "prefill": None}
+
+    return {
+        "code": normalized,
+        "prefill": None,
+    }
 
 
 @router.post("/{batch_id}/forms/{form_type}/readings", response_model=ReadingResponse)
@@ -63,6 +96,7 @@ async def api_add_reading(
     form_type: str,
     body: ReadingCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ) -> ReadingResponse:
     """Save one accrual reading immediately (per-entry save)."""
     try:
@@ -70,7 +104,7 @@ async def api_add_reading(
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown form type")
 
-    batch = await get_open_batch(db, batch_id)
+    batch = await get_open_batch(db, batch_id, role)
     raw = body.model_dump()
     operator = raw.pop("operator_identifier")
     captured_at = raw.pop("captured_at", None)
@@ -84,6 +118,7 @@ async def api_add_reading(
             operator_identifier=operator,
             captured_at=captured_at,
             payload=payload,
+            role=role,
         )
     except Exception as e:
         await db.rollback()
@@ -106,6 +141,7 @@ async def api_save_header(
     form_type: str,
     body: dict[str, Any],
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ) -> SaveResponse:
     """Auto-save accrual form header fields."""
     try:
@@ -113,11 +149,11 @@ async def api_save_header(
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown form type")
 
-    batch = await get_open_batch(db, batch_id)
+    batch = await get_open_batch(db, batch_id, role)
     payload = build_form_payload_from_mapping(body, exclude={"action"})
 
     try:
-        form_instance = await save_form_header(db, batch, form_type, payload)
+        form_instance = await save_form_header(db, batch, form_type, payload, role=role)
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save header: {e}")
@@ -134,6 +170,7 @@ async def api_save_draft(
     form_type: str,
     body: dict[str, Any],
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ) -> SaveResponse:
     """Auto-save atomic form fields without submitting."""
     try:
@@ -141,7 +178,7 @@ async def api_save_draft(
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown form type")
 
-    batch = await get_open_batch(db, batch_id)
+    batch = await get_open_batch(db, batch_id, role)
     action = str(body.get("action", "save"))
     payload = build_form_payload_from_mapping(body, exclude={"action"})
 
@@ -152,7 +189,7 @@ async def api_save_draft(
 
     try:
         form_instance = await save_atomic_form(
-            db, batch, form_type, payload, action=action
+            db, batch, form_type, payload, action=action, role=role
         )
     except Exception as e:
         await db.rollback()
@@ -169,7 +206,9 @@ async def api_save_draft(
 async def api_submit_form(
     batch_id: uuid.UUID,
     form_type: str,
+    body: AccrualSubmitBody,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ) -> SaveResponse:
     """Mark an accrual form complete."""
     try:
@@ -177,10 +216,16 @@ async def api_submit_form(
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown form type")
 
-    await get_open_batch(db, batch_id)
+    await get_open_batch(db, batch_id, role)
 
     try:
-        form_instance = await submit_accrual_form(db, batch_id, form_type)
+        form_instance = await submit_accrual_form(
+            db,
+            batch_id,
+            form_type,
+            submitted_by=body.submitted_by,
+            role=role,
+        )
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to submit form: {e}")

@@ -44,6 +44,7 @@ class FieldDef:
     multi_value_count: int | None = None  # For [×N] fields
     enum_values: list[str] | None = None  # For enum fields
     required: bool = False
+    barcode_scan: bool = False  # USB/camera barcode → prefill (lookup hook later)
 
 
 @dataclass

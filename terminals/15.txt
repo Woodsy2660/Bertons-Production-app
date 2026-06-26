@@ -1,0 +1,15 @@
+---
+pid: 26268
+cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
+command: "cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\" ; uv run uvicorn app.main:app --host 127.0.0.1 --port 8001"
+started_at: 2026-06-25T22:41:13.189Z
+running_for_ms: 14919990 
+---
+uv : The term 'uv' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the 
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:63
++ ... "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app" ; uv run uvi ...
++                                                                ~~
+    + CategoryInfo          : ObjectNotFound: (uv:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 

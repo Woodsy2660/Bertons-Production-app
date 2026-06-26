@@ -1,0 +1,23 @@
+---
+pid: 2816
+cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
+command: "Stop-Process -Id 30316 -Force -ErrorAction SilentlyContinue; cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\"; python -m uvicorn app.main:app --host 127.0.0.1 --port 8002 2>&1"
+started_at: 2026-06-25T05:35:23.570Z
+running_for_ms: 2830079  
+---
+python : INFO:     Started server process [27240]
+At line:1 char:123
++ ... ction-app"; python -m uvicorn app.main:app --host 127.0.0.1 --port 80 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (INFO:     Started server process [27240]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50061 - "POST /login HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:50061 - "GET / HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:50061 - "POST /login HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:50061 - "GET / HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:62060 - "POST /login HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:62060 - "GET / HTTP/1.1" 422 Unprocessable Content

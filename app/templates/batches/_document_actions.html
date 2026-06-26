@@ -1,0 +1,28 @@
+{% macro doc_remove_form(batch, doc, redirect_to) %}
+<form action="/batches/{{ batch.id }}/documents/{{ doc.id }}/delete" method="POST" class="doc-remove-form"
+      onsubmit="return confirm('Remove this document?');">
+    <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
+    <button type="submit" class="btn-danger btn-sm">Remove</button>
+</form>
+{% endmacro %}
+
+{% macro doc_add_button(batch, slot, redirect_to, uid) %}
+<form action="/batches/{{ batch.id }}/upload" method="POST" enctype="multipart/form-data" class="doc-add-form">
+    <input type="hidden" name="slot" value="{{ slot }}">
+    <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
+    <input type="file" name="file" accept=".pdf" required class="doc-file-hidden" id="doc-add-{{ uid }}"
+           onchange="if (this.files.length) { this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit(); }">
+    <button type="button" class="btn-secondary btn-sm" onclick="document.getElementById('doc-add-{{ uid }}').click()">Add file</button>
+</form>
+{% endmacro %}
+
+{% macro doc_label_row(batch, doc, can_manage, redirect_to) %}
+<li class="doc-row">
+    <span class="doc-row-name">{{ doc.original_filename }}</span>
+    {% if can_manage %}
+    {{ doc_remove_form(batch, doc, redirect_to) }}
+    {% else %}
+    <a href="/uploads/{{ doc.id }}/view" target="_blank" class="doc-link">View</a>
+    {% endif %}
+</li>
+{% endmacro %}

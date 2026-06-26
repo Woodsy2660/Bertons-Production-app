@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+    <div class="berton-card p-8">
+        <h1 class="text-3xl text-[var(--berton-burgundy)] mb-2">Sign In</h1>
+        <p class="text-[var(--berton-text-muted)] mb-6">Use the shared manager or operator login.</p>
+
+        {% if error %}
+        <div class="berton-alert berton-alert-error mb-4">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="space-y-5">
+            <input type="hidden" name="next" value="{{ next }}">
+            <div>
+                <label for="username" class="berton-label">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username"
+                       class="berton-input touch-target" autofocus>
+            </div>
+            <div>
+                <label for="password" class="berton-label">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password"
+                       class="berton-input touch-target">
+            </div>
+            <button type="submit" class="btn-primary w-full">Sign In</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

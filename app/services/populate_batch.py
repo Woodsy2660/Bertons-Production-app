@@ -4,6 +4,7 @@ Populate an existing batch with example form data matching its work order.
 Used for compile/append PDF testing on real runs.
 """
 
+import re
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import (
     Batch,
+    BatchStatus,
     FormInstance,
     FormType,
     AccrualMode,
@@ -24,6 +26,8 @@ from app.models import (
     DocumentSlot,
     Operator,
 )
+from app.services.batch_lifecycle import maybe_transition_to_awaiting_review
+from app.services.work_order_parser import _extract_text, filter_label_lines
 
 RUN_15785_BATCH_ID = uuid.UUID("9193383c-175b-44c6-88d5-299ea749c36c")
 
@@ -161,6 +165,153 @@ def _finished_pallet_highs(cartons: int, per_pallet: int) -> list[int]:
     if remainder:
         highs.append(remainder)
     return highs
+
+
+def _clean_ezywine_text(text: str) -> str:
+    text = re.sub(r"/mvlin", " ", text)
+    text = re.sub(r"/m[a-z]{3,4}", " ", text)
+    return re.sub(r"[ \t]+", " ", text)
+
+
+def _parse_ezywine_run_date(text: str) -> date | None:
+    match = re.search(r"Start\s+(\d{2})/(\d{2})/(\d{2})", text, re.IGNORECASE)
+    if not match:
+        return None
+    day, month, year = map(int, match.groups())
+    return date(2000 + year, month, day)
+
+
+def _parse_thou_qty(text: str, code: str) -> int | None:
+    match = re.search(
+        rf"\b{re.escape(code)}\b[^\n]{{0,120}}?THOU\s+([\d.]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        return int(float(match.group(1)) * 1000)
+    except ValueError:
+        return None
+
+
+def _parse_litres(text: str, code: str) -> int | None:
+    match = re.search(
+        rf"\b{re.escape(code)}\b[^\n]{{0,120}}?LTR\s+([\d.]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        return int(float(match.group(1)))
+    except ValueError:
+        return None
+
+
+def _parse_cartons_per_pallet(text: str) -> int:
+    match = re.search(r"Cartons/Pallet\s+([\d.]+)", text, re.IGNORECASE)
+    if match:
+        try:
+            return int(float(match.group(1)))
+        except ValueError:
+            pass
+    return 80
+
+
+def build_run_dict_from_work_order(batch: Batch, pdf_path: str | Path) -> tuple[dict, list[dict]]:
+    """Derive populate payload from an EzyWine work order PDF."""
+    raw = _extract_text(pdf_path)
+    text = _clean_ezywine_text(raw)
+
+    def field(pattern: str) -> str | None:
+        match = re.search(pattern, text, re.IGNORECASE)
+        return match.group(1).strip() if match else None
+
+    product = field(r"Description\s*:\s*([^:]+?)(?:\s+Hourly Rate|\s+Code\s+\d|$)")
+    stock_item = field(r"Stock Item\s*:\s*([A-Z0-9]+)")
+    packing_unit = field(r"Packing Unit\s*:\s*([^:]+?)(?:\s+Run Quantity|$)")
+    packaging_line = field(r"Packaging Line\s*:\s*(\w+)")
+    run_quantity = field(r"Run Quantity\s*:\s*([\d,]+)")
+    run_date = _parse_ezywine_run_date(text) or date.today()
+
+    bottle_code = field(r"\b(BTN[A-Z0-9]+)\b")
+    bvs_code = field(r"\b(BVS[A-Z0-9]+)\b")
+    carton_code = field(r"\b(CN[A-Z0-9]+)\b")
+    label_match = re.search(r"\b(L[A-Z0-9]{4,14})\b[^\n]{0,80}?THOU", text, re.IGNORECASE)
+    label_code = label_match.group(1).upper() if label_match else None
+    tank_match = re.search(r"\b(W[A-Z0-9-]+)\b[^\n]{0,80}?LTR", text, re.IGNORECASE)
+    tank = tank_match.group(1).upper() if tank_match else field(r"\b(W[A-Z0-9-]+)\b")
+
+    bottles_total = (
+        _parse_thou_qty(text, bottle_code) if bottle_code else None
+    ) or (_parse_thou_qty(text, label_code) if label_code else None) or 126000
+    wine_litres = (_parse_litres(text, tank) if tank else None) or int(bottles_total * 0.75)
+    cartons_per_pallet = _parse_cartons_per_pallet(text)
+
+    qty = int(run_quantity.replace(",", "")) if run_quantity else batch.header.run_quantity or 0
+
+    label_lines = filter_label_lines([
+        {
+            "stock_item": label_code or "LFPRESSB25",
+            "description": (product or "") + " 1-piece label",
+            "required": bottles_total,
+            "supplied_qty": bottles_total + 200,
+            "returned_qty": 145,
+        }
+    ])
+
+    run = {
+        "run_number": batch.run_number,
+        "product": product or (batch.header.product if batch.header else "") or "Unknown product",
+        "stock_item": stock_item or (batch.header.stock_item if batch.header else "") or "",
+        "tank": tank or (batch.header.tank if batch.header else "") or "",
+        "run_date": run_date,
+        "packing_unit": packing_unit or (batch.header.packing_unit if batch.header else "") or "",
+        "packaging_line": packaging_line or (batch.header.packaging_line if batch.header else "") or "BERT",
+        "run_quantity": qty,
+        "bottle_code": bottle_code or "BTNLGCFG7AMB",
+        "bvs_code": bvs_code or "BVSPREGRE283",
+        "carton_code": carton_code or "CNPRESSB400",
+        "label_code": label_code or "LFPRESSB25",
+        "bottles_total": bottles_total,
+        "wine_litres": wine_litres,
+        "cartons_per_pallet": cartons_per_pallet,
+    }
+    return run, label_lines
+
+
+async def populate_batch_from_work_order(
+    db: AsyncSession,
+    batch_id: uuid.UUID,
+    upload_dir: str,
+) -> Batch:
+    """Populate all nine forms using data extracted from the batch work order PDF."""
+    result = await db.execute(
+        select(Batch)
+        .options(
+            selectinload(Batch.header),
+            selectinload(Batch.uploaded_documents),
+        )
+        .where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise ValueError(f"Batch {batch_id} not found")
+
+    work_order = next(
+        (d for d in batch.uploaded_documents if d.slot == DocumentSlot.WORK_ORDER),
+        None,
+    )
+    if not work_order:
+        raise ValueError("Batch has no work order PDF")
+
+    run, label_lines = build_run_dict_from_work_order(batch, work_order.stored_path)
+    batch = await populate_batch_forms(db, batch_id, upload_dir, run, label_lines)
+    await maybe_transition_to_awaiting_review(db, batch)
+    await db.commit()
+    await db.refresh(batch)
+    return batch
 
 
 async def populate_run_15785(db: AsyncSession, upload_dir: str) -> Batch:

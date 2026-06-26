@@ -71,6 +71,7 @@ CARTON_QC_TEMPLATE = FormTemplate(
             label="Batch number on pallet tag",
             field_type=FieldType.TEXT,
             source=FieldSource.OPERATOR,
+            barcode_scan=True,
         ),
         FieldDef(
             key="dividers_match",

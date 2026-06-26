@@ -1,0 +1,5 @@
+{% if status == 'not_started' %}Not Started
+{% elif status == 'in_progress' %}In Progress
+{% elif status == 'submitted' %}Submitted
+{% elif status == 'edited_since_submit' %}Edited
+{% else %}{{ status.replace('_', ' ').title() }}{% endif %}

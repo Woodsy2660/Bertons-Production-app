@@ -12,18 +12,22 @@
     <span id="save-queue-count" class="save-queue-badge" hidden></span>
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
-            <a href="/batches/{{ batch.id }}" class="text-[var(--berton-burgundy)] hover:underline text-lg">&larr; Back to Run</a>
+            <a href="/batches/{{ batch.id }}" class="back-link">&larr; Back to Run</a>
             <h1 class="text-3xl text-[var(--berton-burgundy)] mt-2">{{ form_template.form_type.value.replace('_', ' ').title() }}</h1>
-            <p class="text-[var(--berton-text-muted)] text-lg">Run #{{ batch.run_number }}{% if form_template.doc_number %} &mdash; {{ form_template.doc_number }}{% endif %}</p>
+            <p class="text-[var(--berton-text-muted)] text-lg">Run {{ batch.run_number }}{% if form_template.doc_number %} &mdash; {{ form_template.doc_number }}{% endif %}</p>
         </div>
         <span class="status-badge
             {% if form_instance and form_instance.status.value == 'submitted' %}status-submitted
             {% elif form_instance and form_instance.status.value == 'in_progress' %}status-in-progress
             {% elif form_instance and form_instance.status.value == 'edited_since_submit' %}status-edited
             {% else %}status-not-started{% endif %}">
-            {{ (form_instance.status.value if form_instance else 'not_started').replace('_', ' ').title() }}
+            {% with status=(form_instance.status.value if form_instance else 'not_started') %}{% include "batches/_form_status.html" %}{% endwith %}
         </span>
     </div>
+
+    {% if form_readonly %}
+    <div class="berton-alert berton-alert-info">This run is read-only — you cannot add or change entries.</div>
+    {% endif %}
 
     {# ===== PICK LIST (atomic, lines from work order) ===== #}
     {% if form_template.form_type.value == 'pick_list' %}
@@ -101,12 +105,22 @@
             {% endif %}
         </div>
 
+        {% if not form_readonly %}
+        <div class="max-w-xs">
+            <label for="pick_list_initials" class="berton-label">Your initials <span class="text-red-600">*</span></label>
+            <input type="text" id="pick_list_initials" name="initials" required
+                   class="berton-input touch-target" placeholder="e.g. JSM" autocomplete="off" maxlength="20">
+        </div>
+        {% endif %}
+
         <div class="flex flex-wrap justify-between items-center gap-3 pt-4 border-t border-[var(--berton-border)]">
+            {% if not form_readonly %}
             <p class="berton-hint mb-0">Changes save automatically as you type.</p>
             <div class="flex flex-wrap gap-3">
                 <a href="/batches/{{ batch.id }}" class="btn-secondary">Cancel</a>
                 <button type="submit" name="action" value="submit" class="btn-primary">Submit Form</button>
             </div>
+            {% endif %}
         </div>
     </form>
 
@@ -134,6 +148,7 @@
             </div>
             {% endfor %}
         </div>
+        {% if not form_readonly %}
         <div class="flex flex-wrap justify-between items-center gap-3 mt-8 pt-6 border-t border-[var(--berton-border)]">
             <p class="berton-hint mb-0">Changes save automatically as you type.</p>
             <div class="flex flex-wrap gap-3">
@@ -141,6 +156,7 @@
                 <button type="submit" name="action" value="submit" class="btn-primary">Submit Form</button>
             </div>
         </div>
+        {% endif %}
     </form>
 
     {# ===== ACCRUAL FORMS ===== #}
@@ -148,7 +164,7 @@
     <div class="space-y-6">
 
         {# Header fields (manufacturer, bottle code, filters, etc.) #}
-        {% if form_template.header_fields %}
+        {% if form_template.header_fields and not form_readonly %}
         <form action="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}/header" method="POST"
               class="berton-card p-6 js-auto-save-header">
             <h2 class="text-2xl text-[var(--berton-burgundy)] mb-4">Form Details</h2>
@@ -223,7 +239,7 @@
         </div>
 
         {# CARTON QC — two separate sections #}
-        {% if form_template.form_type.value == 'carton_qc' %}
+        {% if not form_readonly and form_template.form_type.value == 'carton_qc' %}
         {% set carton_field_keys = ['carton_manufacturer', 'carton_code', 'qty_on_pallet', 'carton_code_match', 'batch_number_pallet_tag', 'dividers_match', 'stickers_match', 'initials'] %}
         {% set hourly_field_keys = ['captured_at', 'cartons_formed_glued', 'check_6_cartons', 'carton_print_match', 'record_carton_print', 'glue_shots_ok', 'cartons_sealed_neatly', 'initials'] %}
 
@@ -233,11 +249,10 @@
                 <input type="hidden" name="table" value="carton_details">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="berton-label">Operator <span class="text-red-600">*</span></label>
-                        <select name="operator_identifier" required class="berton-input touch-target">
-                            <option value="">-- Select --</option>
-                            {% for op in operators %}<option value="{{ op.initials }}">{{ op.name }} ({{ op.initials }})</option>{% endfor %}
-                        </select>
+                        <label class="berton-label">Your initials <span class="text-red-600">*</span></label>
+                        <input type="text" name="operator_identifier" required
+                               class="berton-input touch-target" placeholder="e.g. JSM"
+                               autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields if field.key in carton_field_keys %}
                     <div>
@@ -259,11 +274,10 @@
                 <input type="hidden" name="table" value="hourly_qc">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="berton-label">Operator <span class="text-red-600">*</span></label>
-                        <select name="operator_identifier" required class="berton-input touch-target">
-                            <option value="">-- Select --</option>
-                            {% for op in operators %}<option value="{{ op.initials }}">{{ op.name }} ({{ op.initials }})</option>{% endfor %}
-                        </select>
+                        <label class="berton-label">Your initials <span class="text-red-600">*</span></label>
+                        <input type="text" name="operator_identifier" required
+                               class="berton-input touch-target" placeholder="e.g. JSM"
+                               autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields if field.key in hourly_field_keys %}
                     <div>
@@ -280,7 +294,7 @@
         </div>
 
         {# FINAL PALLET COUNT — two separate sections #}
-        {% elif form_template.form_type.value == 'final_pallet_count' %}
+        {% elif not form_readonly and form_template.form_type.value == 'final_pallet_count' %}
         {% set bottles_field_keys = ['seq_no', 'prn_date', 'pallet_no', 'colour', 'foreign_objects_checked', 'captured_at'] %}
         {% set finished_field_keys = ['seq_no', 'high', 'captured_at'] %}
 
@@ -290,11 +304,10 @@
                 <input type="hidden" name="region" value="bottles">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="berton-label">Operator <span class="text-red-600">*</span></label>
-                        <select name="operator_identifier" required class="berton-input touch-target">
-                            <option value="">-- Select --</option>
-                            {% for op in operators %}<option value="{{ op.initials }}">{{ op.name }} ({{ op.initials }})</option>{% endfor %}
-                        </select>
+                        <label class="berton-label">Your initials <span class="text-red-600">*</span></label>
+                        <input type="text" name="operator_identifier" required
+                               class="berton-input touch-target" placeholder="e.g. JSM"
+                               autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields if field.key in bottles_field_keys %}
                     <div>
@@ -316,11 +329,10 @@
                 <input type="hidden" name="region" value="finished">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="berton-label">Operator <span class="text-red-600">*</span></label>
-                        <select name="operator_identifier" required class="berton-input touch-target">
-                            <option value="">-- Select --</option>
-                            {% for op in operators %}<option value="{{ op.initials }}">{{ op.name }} ({{ op.initials }})</option>{% endfor %}
-                        </select>
+                        <label class="berton-label">Your initials <span class="text-red-600">*</span></label>
+                        <input type="text" name="operator_identifier" required
+                               class="berton-input touch-target" placeholder="e.g. JSM"
+                               autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields if field.key in finished_field_keys %}
                     <div>
@@ -337,19 +349,16 @@
         </div>
 
         {# DEFAULT ACCRUAL (log / matrix) #}
-        {% else %}
+        {% elif not form_readonly %}
         <div class="berton-card p-6">
             <h2 class="text-2xl text-[var(--berton-burgundy)] mb-4">Add Entry</h2>
             <form action="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}/readings" method="POST" class="js-reading-form">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="berton-label">Operator <span class="text-red-600">*</span></label>
-                        <select name="operator_identifier" required class="berton-input touch-target">
-                            <option value="">-- Select your name --</option>
-                            {% for op in operators %}
-                            <option value="{{ op.initials }}">{{ op.name }} ({{ op.initials }})</option>
-                            {% endfor %}
-                        </select>
+                        <label class="berton-label">Your initials <span class="text-red-600">*</span></label>
+                        <input type="text" name="operator_identifier" required
+                               class="berton-input touch-target" placeholder="e.g. JSM"
+                               autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields %}
                     {% if field.key not in ['captured_at', 'initial', 'initials', 'table', 'region'] %}
@@ -380,18 +389,27 @@
         </div>
         {% endif %}
 
+        {% if not form_readonly %}
         <div id="form-complete-panel" class="berton-card p-6" {% if not readings %}hidden{% endif %}>
             <form action="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}/submit" method="POST"
                   class="flex flex-wrap justify-between items-center gap-4">
-                <p class="text-[var(--berton-text-muted)] text-lg">Mark this form complete when finished.</p>
+                <div class="flex-1 min-w-[200px]">
+                    <p class="text-[var(--berton-text-muted)] text-lg mb-3">Mark this form complete when finished.</p>
+                    <label for="submitted_by" class="berton-label">Your initials <span class="text-red-600">*</span></label>
+                    <input type="text" id="submitted_by" name="submitted_by" required
+                           class="berton-input max-w-xs" placeholder="e.g. JSM" autocomplete="off" maxlength="20">
+                </div>
                 <button type="submit" class="btn-primary btn-gold">Mark Form Complete</button>
             </form>
         </div>
+        {% endif %}
     </div>
     {% endif %}
 </div>
 {% endblock %}
 
 {% block head %}
+<script src="/static/js/gs1-parse.js" defer></script>
+<script src="/static/js/barcode-scan.js" defer></script>
 <script src="/static/js/form-save.js" defer></script>
 {% endblock %}

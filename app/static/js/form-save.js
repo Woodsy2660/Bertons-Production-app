@@ -280,10 +280,20 @@
     function bindSubmitPanel(panel, batchId, formType, bar) {
         panel.addEventListener("submit", async (event) => {
             event.preventDefault();
+            const initialsInput = panel.querySelector('[name="submitted_by"]');
+            const submittedBy = initialsInput?.value?.trim();
+            if (!submittedBy) {
+                setStatus(bar, "error", "Enter your initials before marking complete.");
+                initialsInput?.focus();
+                return;
+            }
+
             setStatus(bar, "saving", "Marking form complete…");
 
             try {
-                await postJson(`/api/batches/${batchId}/forms/${formType}/submit`, {});
+                await postJson(`/api/batches/${batchId}/forms/${formType}/submit`, {
+                    submitted_by: submittedBy,
+                });
                 setStatus(bar, "saved", "Form marked complete");
                 window.location.href = `/batches/${batchId}`;
             } catch (err) {

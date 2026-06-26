@@ -7,20 +7,54 @@ from typing import Annotated
 from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.responses import RedirectResponse, FileResponse, JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.middleware import Middleware
+from starlette.middleware.sessions import SessionMiddleware
 
+from app.auth.credentials import verify_credentials
+from app.auth.dependencies import (
+    PUBLIC_PATHS,
+    Role,
+    get_current_role,
+    require_manager,
+    require_operator_or_manager,
+)
+from app.auth.session import clear_session, get_role_from_session, set_role_in_session
 from app.config import get_settings
 from app.database import get_db
 from app.api import api_router
 from app.models import (
     Batch, BatchHeader, FormInstance, Reading, UploadedDocument,
-    Compilation, Operator, BatchStatus, FormStatus, FormType as ModelFormType,
+    Compilation, BatchStatus, FormStatus, FormType as ModelFormType,
     AccrualMode as ModelAccrualMode, DocumentSlot
 )
 from app.forms import FormType, AccrualMode, FORM_TEMPLATES, get_form_template
+from app.services.batch_lifecycle import (
+    assert_can_compile,
+    assert_can_reopen,
+    assert_can_upload,
+    assert_can_write_forms,
+    can_compile,
+    can_mark_ready,
+    can_reopen,
+    can_upload_documents,
+    can_write_forms,
+    is_greyed_out,
+    list_batches_for_role,
+    mark_complete,
+    reopen_run,
+)
+from app.services.document_management import (
+    clear_single_slot_documents,
+    delete_uploaded_document,
+    get_batch_document,
+    refresh_header_from_work_order,
+    replace_document_content,
+    validate_pdf_upload,
+)
 from app.services.compilation import compile_batch
 from app.services.form_persistence import (
     add_reading as persist_reading,
@@ -39,6 +73,31 @@ app = FastAPI(
     version="0.1.0",
 )
 
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in PUBLIC_PATHS or path.startswith("/static/"):
+        return await call_next(request)
+    role = get_role_from_session(request.session)
+    if role is None:
+        if path.startswith("/api/"):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Authentication required"},
+            )
+        next_path = path
+        if request.url.query:
+            next_path = f"{path}?{request.url.query}"
+        return RedirectResponse(url=f"/login?next={next_path}", status_code=303)
+    return await call_next(request)
+
+
+# Insert before auth in the stack so SessionMiddleware runs first on each request.
+app.user_middleware.insert(
+    0, Middleware(SessionMiddleware, secret_key=settings.secret_key)
+)
+
+
 # Mount static files
 static_path = Path(__file__).parent / "static"
 static_path.mkdir(exist_ok=True)
@@ -48,10 +107,12 @@ app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_path))
 templates.env.globals["debug"] = settings.debug
+templates.env.globals["get_role"] = lambda request: get_role_from_session(request.session)
 
 # Ensure upload directory exists
 upload_path = Path(settings.upload_dir)
 upload_path.mkdir(exist_ok=True)
+Path(settings.compiled_output_dir).mkdir(parents=True, exist_ok=True)
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
@@ -145,26 +206,68 @@ FORM_DISPLAY_NAMES = {
 }
 
 
+@app.get("/login")
+async def login_page(request: Request, error: str | None = None):
+    """Shared-role login."""
+    if get_role_from_session(request.session):
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "auth/login.html",
+        {"error": error, "next": request.query_params.get("next", "/")},
+    )
+
+
+@app.post("/login")
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),
+):
+    role = verify_credentials(username, password, settings)
+    if not role:
+        return templates.TemplateResponse(
+            request,
+            "auth/login.html",
+            {"error": "Invalid username or password", "next": next},
+            status_code=401,
+        )
+    set_role_in_session(request.session, role)
+    dest = next if next.startswith("/") and not next.startswith("//") else "/"
+    return RedirectResponse(url=dest, status_code=303)
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    clear_session(request.session)
+    return RedirectResponse(url="/login", status_code=303)
+
+
 @app.get("/")
 async def index(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """Render the main dashboard."""
-    result = await db.execute(
-        select(Batch)
-        .options(selectinload(Batch.header))
-        .order_by(Batch.created_at.desc())
-        .limit(100)
-    )
-    batches = result.scalars().all()
+    batches, review_queue = await list_batches_for_role(db, role, settings)
+    review_ids = {b.id for b in review_queue}
+    active_batches = [
+        b for b in batches
+        if b.status != BatchStatus.COMPLETE and b.id not in review_ids
+    ]
+    complete_batches = [b for b in batches if b.status == BatchStatus.COMPLETE]
 
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "batches": batches,
-            "total": len(batches),
+            "active_batches": active_batches,
+            "complete_batches": complete_batches,
+            "review_queue": review_queue,
+            "role": role,
+            "review_count": len(review_queue),
         },
     )
 
@@ -178,11 +281,15 @@ async def health_check():
 # ============== BATCH ROUTES ==============
 
 @app.get("/batches/new")
-async def new_batch_form(request: Request):
+async def new_batch_form(
+    request: Request,
+    role: Annotated[Role, Depends(require_manager)],
+):
     """Show the new batch creation form."""
     return templates.TemplateResponse(
         request,
         "batches/new.html",
+        {"role": role},
     )
 
 
@@ -190,6 +297,7 @@ async def new_batch_form(request: Request):
 async def create_batch(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
     run_number: str = Form(...),
     work_order: UploadFile = File(...),
     label_references: list[UploadFile] = File(default=[]),
@@ -223,7 +331,11 @@ async def create_batch(
             status_code=400,
         )
 
-    batch = Batch(run_number=run_number, created_by="Manager")
+    batch = Batch(
+        run_number=run_number,
+        created_by="Manager",
+        status=BatchStatus.IN_PROGRESS,
+    )
     db.add(batch)
     await db.flush()
 
@@ -267,6 +379,7 @@ async def batch_detail(
     request: Request,
     batch_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """Show batch detail page."""
     result = await db.execute(
@@ -314,6 +427,11 @@ async def batch_detail(
         None,
     )
 
+    stale_compilation = next(
+        (c for c in batch.compilations if not c.is_current),
+        None,
+    )
+
     return templates.TemplateResponse(
         request,
         "batches/detail.html",
@@ -325,29 +443,122 @@ async def batch_detail(
             "ezywine_listing": ezywine_listing,
             "form_status": form_status,
             "current_compilation": current_compilation,
+            "stale_compilation": stale_compilation,
+            "role": role,
+            "is_greyed": is_greyed_out(batch),
+            "can_edit_forms": can_write_forms(batch, role),
+            "can_manage_documents": can_upload_documents(batch, role),
+            "can_mark_ready": can_mark_ready(batch, role),
+            "can_reopen": can_reopen(batch, role),
         },
     )
+
+
+@app.post("/batches/{batch_id}/mark-ready")
+async def mark_ready(
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+):
+    """Manager gate: proceed to the dedicated completion page."""
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not can_mark_ready(batch, role):
+        raise HTTPException(status_code=400, detail="Run is not ready for review completion")
+
+    return RedirectResponse(url=f"/batches/{batch_id}/complete", status_code=303)
+
+
+@app.get("/batches/{batch_id}/complete")
+async def completion_page(
+    request: Request,
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+):
+    """Dedicated completion page: upload listing + label refs, compile, save."""
+    result = await db.execute(
+        select(Batch)
+        .options(
+            selectinload(Batch.header),
+            selectinload(Batch.uploaded_documents),
+            selectinload(Batch.compilations),
+        )
+        .where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not can_compile(batch, role):
+        raise HTTPException(status_code=400, detail="Completion is not available for this run")
+
+    ezywine_listing = next(
+        (d for d in batch.uploaded_documents if d.slot == DocumentSlot.EZYWINE_LISTING),
+        None,
+    )
+    label_references = sorted(
+        [d for d in batch.uploaded_documents if d.slot == DocumentSlot.LABEL_REFERENCE],
+        key=lambda d: d.sequence,
+    )
+    current_compilation = next((c for c in batch.compilations if c.is_current), None)
+
+    compile_error = request.query_params.get("error")
+
+    return templates.TemplateResponse(
+        request,
+        "batches/complete.html",
+        {
+            "batch": batch,
+            "ezywine_listing": ezywine_listing,
+            "label_references": label_references,
+            "current_compilation": current_compilation,
+            "role": role,
+            "can_manage_documents": can_upload_documents(batch, role),
+            "is_recompile": batch.status == BatchStatus.REOPENED,
+            "compile_error": compile_error,
+        },
+    )
+
+
+def _safe_redirect(redirect_to: str, batch_id: uuid.UUID) -> str:
+    if redirect_to.startswith("/") and not redirect_to.startswith("//"):
+        return redirect_to
+    return f"/batches/{batch_id}"
 
 
 @app.post("/batches/{batch_id}/upload")
 async def upload_document(
     batch_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
     slot: str = Form(...),
     file: UploadFile = File(...),
+    redirect_to: str = Form(""),
 ):
-    """Upload a document for a batch."""
-    # Get batch
-    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    """Upload or replace a document for a batch (manager only)."""
+    result = await db.execute(
+        select(Batch)
+        .options(selectinload(Batch.header))
+        .where(Batch.id == batch_id)
+    )
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if batch.is_locked:
-        raise HTTPException(status_code=400, detail="Batch is locked")
+    assert_can_upload(batch, role)
 
-    # Determine sequence for label references
+    try:
+        validate_pdf_upload(file)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    doc_slot = DocumentSlot(slot)
     sequence = 0
-    if slot == "label_reference":
+
+    if doc_slot in (DocumentSlot.WORK_ORDER, DocumentSlot.EZYWINE_LISTING):
+        await clear_single_slot_documents(db, batch_id, doc_slot)
+    elif doc_slot == DocumentSlot.LABEL_REFERENCE:
         count_result = await db.execute(
             select(func.count(UploadedDocument.id))
             .where(UploadedDocument.batch_id == batch_id)
@@ -356,12 +567,76 @@ async def upload_document(
         sequence = count_result.scalar_one() or 0
 
     doc = await save_uploaded_file(
-        batch_id, DocumentSlot(slot), file, sequence=sequence
+        batch_id, doc_slot, file, sequence=sequence
     )
     db.add(doc)
+
+    if doc_slot == DocumentSlot.WORK_ORDER:
+        await refresh_header_from_work_order(db, batch, doc.stored_path)
+
     await db.commit()
 
-    return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
+    return RedirectResponse(
+        url=_safe_redirect(redirect_to, batch_id),
+        status_code=303,
+    )
+
+
+@app.post("/batches/{batch_id}/documents/{doc_id}/delete")
+async def delete_document_route(
+    batch_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+    redirect_to: str = Form(""),
+):
+    """Remove an uploaded document (manager only)."""
+    try:
+        batch, doc = await get_batch_document(db, batch_id, doc_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    assert_can_upload(batch, role)
+    await delete_uploaded_document(db, doc)
+    await db.commit()
+
+    return RedirectResponse(
+        url=_safe_redirect(redirect_to, batch_id),
+        status_code=303,
+    )
+
+
+@app.post("/batches/{batch_id}/documents/{doc_id}/replace")
+async def replace_document_route(
+    batch_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+    file: UploadFile = File(...),
+    redirect_to: str = Form(""),
+):
+    """Replace an uploaded document in place (manager only)."""
+    try:
+        batch, doc = await get_batch_document(db, batch_id, doc_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    assert_can_upload(batch, role)
+
+    try:
+        await replace_document_content(doc, file)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if doc.slot == DocumentSlot.WORK_ORDER:
+        await refresh_header_from_work_order(db, batch, doc.stored_path)
+
+    await db.commit()
+
+    return RedirectResponse(
+        url=_safe_redirect(redirect_to, batch_id),
+        status_code=303,
+    )
 
 
 # ============== FORM ROUTES ==============
@@ -372,6 +647,7 @@ async def form_view(
     batch_id: uuid.UUID,
     form_type: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """View/edit a form for a batch."""
     # Get batch with form instance
@@ -400,10 +676,6 @@ async def form_view(
     )
     form_instance = fi_result.scalar_one_or_none()
 
-    # Get operators for accrual forms
-    op_result = await db.execute(select(Operator).order_by(Operator.name))
-    operators = op_result.scalars().all()
-
     inherited_values = build_inherited_values(batch)
     form_defaults = build_form_defaults(form_type)
 
@@ -423,6 +695,8 @@ async def form_view(
             parsed = parse_work_order_pdf(work_order_doc.stored_path)
             pick_list_lines = filter_label_lines(parsed.get("pick_list_lines") or [])
 
+    form_readonly = not can_write_forms(batch, role)
+
     return templates.TemplateResponse(
         request,
         "batches/form.html",
@@ -431,11 +705,12 @@ async def form_view(
             "form_template": form_template,
             "form_instance": form_instance,
             "readings": sorted(form_instance.readings, key=lambda r: r.sequence) if form_instance else [],
-            "operators": operators,
             "inherited_values": inherited_values,
             "form_defaults": form_defaults,
             "pick_list_lines": pick_list_lines,
             "now": datetime.now(),
+            "role": role,
+            "form_readonly": form_readonly,
         },
     )
 
@@ -446,15 +721,14 @@ async def save_atomic_form(
     batch_id: uuid.UUID,
     form_type: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """Save an atomic form."""
-    # Get batch
     result = await db.execute(select(Batch).where(Batch.id == batch_id))
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if batch.is_locked:
-        raise HTTPException(status_code=400, detail="Batch is locked")
+    assert_can_write_forms(batch, role)
 
     form_data = await request.form()
     action = form_data.get("action", "save")
@@ -473,7 +747,9 @@ async def save_atomic_form(
             payload["lines"] = lines
 
     try:
-        await persist_atomic_form(db, batch, form_type, payload, action=action)
+        await persist_atomic_form(db, batch, form_type, payload, action=action, role=role)
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save form: {e}")
@@ -487,15 +763,14 @@ async def add_reading(
     batch_id: uuid.UUID,
     form_type: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """Add a reading to an accrual form."""
-    # Get batch
     result = await db.execute(select(Batch).where(Batch.id == batch_id))
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if batch.is_locked:
-        raise HTTPException(status_code=400, detail="Batch is locked")
+    assert_can_write_forms(batch, role)
 
     # Get form template
     try:
@@ -515,10 +790,13 @@ async def add_reading(
             db,
             batch,
             form_type,
-            operator_identifier=form_data.get("operator_identifier", "Unknown"),
+            operator_identifier=form_data.get("operator_identifier", ""),
             captured_at=form_data.get("captured_at", ""),
             payload=payload,
+            role=role,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to add reading: {e}")
@@ -535,14 +813,14 @@ async def save_form_header(
     batch_id: uuid.UUID,
     form_type: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """Save header fields on an accrual form (e.g. manufacturer, bottle code)."""
     result = await db.execute(select(Batch).where(Batch.id == batch_id))
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if batch.is_locked:
-        raise HTTPException(status_code=400, detail="Batch is locked")
+    assert_can_write_forms(batch, role)
 
     try:
         ft = FormType(form_type)
@@ -554,7 +832,9 @@ async def save_form_header(
     payload = build_form_payload(form_data, exclude={"action"})
 
     try:
-        await persist_form_header(db, batch, form_type, payload)
+        await persist_form_header(db, batch, form_type, payload, role=role)
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save header: {e}")
@@ -567,13 +847,24 @@ async def save_form_header(
 
 @app.post("/batches/{batch_id}/forms/{form_type}/submit")
 async def submit_form(
+    request: Request,
     batch_id: uuid.UUID,
     form_type: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    submitted_by: str = Form(...),
 ):
     """Submit an accrual form."""
     try:
-        await submit_accrual_form(db, batch_id, form_type)
+        await submit_accrual_form(
+            db,
+            batch_id,
+            form_type,
+            submitted_by=submitted_by,
+            role=role,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to submit form: {e}")
@@ -587,45 +878,68 @@ async def submit_form(
 async def compile_batch_route(
     batch_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
 ):
-    """Compile batch into PDF."""
+    """Compile batch into PDF and mark run complete."""
     result = await db.execute(
         select(Batch)
         .options(
             selectinload(Batch.header),
             selectinload(Batch.uploaded_documents),
             selectinload(Batch.form_instances).selectinload(FormInstance.readings),
+            selectinload(Batch.compilations),
         )
         .where(Batch.id == batch_id)
     )
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if batch.is_locked:
-        raise HTTPException(status_code=400, detail="Batch is already compiled")
+    assert_can_compile(batch, role)
 
-    # Compile
+    ezywine = next(
+        (d for d in batch.uploaded_documents if d.slot == DocumentSlot.EZYWINE_LISTING),
+        None,
+    )
+    if not ezywine:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload the EzyWine Bottling Run COMPLETE Listing before compiling",
+        )
+
+    for comp in batch.compilations:
+        if comp.is_current:
+            comp.is_current = False
+
     try:
-        compilation = await compile_batch(batch, db, settings.upload_dir)
+        compilation = await compile_batch(
+            batch,
+            db,
+            settings.upload_dir,
+            compiled_output_dir=settings.compiled_output_dir,
+            compiled_by="Manager",
+        )
         db.add(compilation)
-
-        # Lock batch
-        batch.is_locked = True
-        batch.status = BatchStatus.COMPILED
-
+        mark_complete(batch)
         await db.commit()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        await db.rollback()
+        from urllib.parse import quote
+
+        return RedirectResponse(
+            url=f"/batches/{batch_id}/complete?error={quote(str(e)[:500])}",
+            status_code=303,
+        )
 
     return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
 
 
 @app.post("/batches/{batch_id}/reopen")
-async def reopen_batch(
+async def reopen_batch_route(
     batch_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
 ):
-    """Reopen a compiled batch."""
+    """Reopen a complete run for manager edits and recompile."""
     result = await db.execute(
         select(Batch)
         .options(selectinload(Batch.compilations))
@@ -634,16 +948,9 @@ async def reopen_batch(
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+    assert_can_reopen(batch, role)
 
-    # Mark current compilation as not current
-    for comp in batch.compilations:
-        if comp.is_current:
-            comp.is_current = False
-
-    # Unlock batch
-    batch.is_locked = False
-    batch.status = BatchStatus.REOPENED
-
+    await reopen_run(db, batch)
     await db.commit()
 
     return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
@@ -709,78 +1016,7 @@ async def download_compilation(
     )
 
 
-# ============== DEV: COMPILE TEST RUN ==============
-
-if settings.debug:
-    from app.services.seed_test_run import TEST_RUN_NUMBER, create_compile_test_run
-
-    @app.get("/dev/test-run")
-    async def dev_test_run_page(
-        request: Request,
-        db: Annotated[AsyncSession, Depends(get_db)],
-    ):
-        """Test page with a fully-populated run for compile testing."""
-        result = await db.execute(
-            select(Batch).where(Batch.run_number == TEST_RUN_NUMBER)
-        )
-        batch = result.scalar_one_or_none()
-        message = None
-        if request.query_params.get("created"):
-            message = "Test run created successfully. Open it below and use Manager Tools to compile."
-
-        return templates.TemplateResponse(
-            request,
-            "dev/test_run.html",
-            {
-                "batch": batch,
-                "test_run_number": TEST_RUN_NUMBER,
-                "message": message,
-                "error": None,
-            },
-        )
-
-    @app.post("/dev/test-run/seed")
-    async def dev_test_run_seed(
-        db: Annotated[AsyncSession, Depends(get_db)],
-    ):
-        """Create or replace the compile test run."""
-        try:
-            await create_compile_test_run(db, settings.upload_dir)
-        except Exception as e:
-            return RedirectResponse(
-                url=f"/dev/test-run?error={e}",
-                status_code=303,
-            )
-        return RedirectResponse(url="/dev/test-run?created=1", status_code=303)
 
 
-# ============== OPERATOR ROUTES ==============
-
-@app.get("/operators")
-async def operators_page(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Show operators management page."""
-    result = await db.execute(select(Operator).order_by(Operator.name))
-    operators = result.scalars().all()
-
-    return templates.TemplateResponse(
-        request,
-        "operators/index.html",
-        {"operators": operators},
-    )
 
 
-@app.post("/operators")
-async def create_operator(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    name: str = Form(...),
-    initials: str = Form(...),
-):
-    """Create a new operator."""
-    operator = Operator(name=name, initials=initials.upper())
-    db.add(operator)
-    await db.commit()
-
-    return RedirectResponse(url="/operators", status_code=303)
