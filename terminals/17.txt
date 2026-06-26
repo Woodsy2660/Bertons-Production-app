@@ -3,7 +3,7 @@ pid: 18684
 cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
 command: "pip install vercel httpx -q"
 started_at: 2026-06-26T02:52:06.787Z
-running_for_ms: 4779926  
+running_for_ms: 5014920  
 ---
   WARNING: The script cbor2.exe is installed in 'C:\Users\bwood\AppData\Roaming\Python\Python313\Scripts' which is not on PATH.
   Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
