@@ -1,0 +1,73 @@
+{% macro reading_section_cell(reading, form_type) %}
+{% if form_type == 'carton_qc' %}
+<td class="px-3 py-2">{{ reading.payload.get('table', '')|replace('_', ' ')|title }}</td>
+{% elif form_type == 'final_pallet_count' %}
+<td class="px-3 py-2">{{ reading.payload.get('region', '')|title }}</td>
+{% endif %}
+{% endmacro %}
+
+{% macro reading_summary_cell(reading) %}
+<td class="px-3 py-2 text-[var(--berton-text-muted)]">
+    {% if reading.payload.get('carton_code') %}{{ reading.payload.carton_code }}{% endif %}
+    {% if reading.payload.get('pallet_no') %}Pallet {{ reading.payload.pallet_no }}{% endif %}
+    {% if reading.payload.get('high') %}High: {{ reading.payload.high }}{% endif %}
+    {% if reading.payload.get('batch_number') %}{{ reading.payload.batch_number }}{% endif %}
+    {% if reading.payload.get('record_carton_print') %}{{ reading.payload.record_carton_print }}{% endif %}
+</td>
+{% endmacro %}
+
+{% macro reading_delete_cell(reading, allow_delete, batch_id, form_type, redirect_to) %}
+{% if allow_delete %}
+<td class="px-2 py-2 text-right w-12">
+    <form method="POST"
+          action="/batches/{{ batch_id }}/forms/{{ form_type }}/readings/{{ reading.id }}/delete"
+          class="reading-delete-form inline-flex"
+          onsubmit="return confirm('Delete this entry?');">
+        <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
+        <button type="submit"
+                class="btn-icon-x"
+                aria-label="Delete entry"
+                title="Delete entry">&times;</button>
+    </form>
+</td>
+{% endif %}
+{% endmacro %}
+
+{% macro readings_table_head(form_type, allow_delete=false) %}
+<thead class="bg-[var(--berton-warm)]">
+    <tr>
+        <th class="px-3 py-2 text-left">#</th>
+        <th class="px-3 py-2 text-left">Time</th>
+        <th class="px-3 py-2 text-left">Operator</th>
+        {% if form_type in ['carton_qc', 'final_pallet_count'] %}
+        <th class="px-3 py-2 text-left">Section</th>
+        {% endif %}
+        <th class="px-3 py-2 text-left">Summary</th>
+        {% if allow_delete %}
+        <th class="px-2 py-2 text-right w-12"><span class="sr-only">Delete</span></th>
+        {% endif %}
+    </tr>
+</thead>
+{% endmacro %}
+
+{% macro readings_table_body(readings, form_type, allow_delete=false, batch_id='', redirect_to='') %}
+<tbody id="readings-tbody" class="divide-y divide-[var(--berton-border)]">
+    {% for reading in readings %}
+    <tr data-reading-id="{{ reading.id }}" data-sequence="{{ reading.sequence }}">
+        <td class="px-3 py-2">{{ reading.sequence }}</td>
+        <td class="px-3 py-2">{{ reading.captured_at.strftime('%H:%M') }}</td>
+        <td class="px-3 py-2">{{ reading.operator_identifier }}</td>
+        {{ reading_section_cell(reading, form_type) }}
+        {{ reading_summary_cell(reading) }}
+        {{ reading_delete_cell(reading, allow_delete, batch_id, form_type, redirect_to) }}
+    </tr>
+    {% else %}
+    <tr class="readings-empty">
+        <td colspan="{% if form_type in ['carton_qc', 'final_pallet_count'] %}{% if allow_delete %}6{% else %}5{% endif %}{% else %}{% if allow_delete %}5{% else %}4{% endif %}{% endif %}"
+            class="px-3 py-4 text-center text-[var(--berton-text-muted)]">
+            No entries yet — each reading saves immediately when added.
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
+{% endmacro %}

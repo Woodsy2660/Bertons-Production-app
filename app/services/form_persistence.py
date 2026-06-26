@@ -333,12 +333,71 @@ async def add_reading(
     return form_instance, reading, sequence
 
 
+async def _renumber_readings(db: AsyncSession, form_instance_id: uuid.UUID) -> None:
+    result = await db.execute(
+        select(Reading)
+        .where(Reading.form_instance_id == form_instance_id)
+        .order_by(Reading.sequence, Reading.created_at)
+    )
+    for index, reading in enumerate(result.scalars().all(), start=1):
+        reading.sequence = index
+
+
+async def delete_reading(
+    db: AsyncSession,
+    batch: Batch,
+    form_type: str,
+    reading_id: uuid.UUID,
+    *,
+    role: Role = "operator",
+) -> tuple[FormInstance, int]:
+    """Delete one reading and renumber the remaining entries."""
+    assert_can_write_forms(batch, role)
+
+    fi_result = await db.execute(
+        select(FormInstance)
+        .where(FormInstance.batch_id == batch.id)
+        .where(FormInstance.form_type == ModelFormType(form_type))
+    )
+    form_instance = fi_result.scalar_one_or_none()
+    if not form_instance:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    reading_result = await db.execute(
+        select(Reading)
+        .where(Reading.id == reading_id)
+        .where(Reading.form_instance_id == form_instance.id)
+    )
+    reading = reading_result.scalar_one_or_none()
+    if not reading:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    await db.delete(reading)
+    await db.flush()
+    await _renumber_readings(db, form_instance.id)
+
+    if form_instance.status == FormStatus.SUBMITTED:
+        form_instance.status = FormStatus.EDITED_SINCE_SUBMIT
+    form_instance.last_edited_at = datetime.utcnow()
+
+    count_result = await db.execute(
+        select(func.count(Reading.id))
+        .where(Reading.form_instance_id == form_instance.id)
+    )
+    reading_count = count_result.scalar_one() or 0
+
+    await db.commit()
+    await db.refresh(form_instance)
+
+    return form_instance, reading_count
+
+
 async def submit_accrual_form(
     db: AsyncSession,
     batch_id: uuid.UUID,
     form_type: str,
     *,
-    submitted_by: str,
+    submitted_by: str | None = None,
     role: Role = "operator",
 ) -> FormInstance | None:
     result = await db.execute(select(Batch).where(Batch.id == batch_id))
@@ -346,7 +405,6 @@ async def submit_accrual_form(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
     assert_can_write_forms(batch, role)
-    submitted_by = require_operator_identifier(submitted_by, field="submitted_by")
 
     fi_result = await db.execute(
         select(FormInstance)
@@ -364,6 +422,17 @@ async def submit_accrual_form(
     )
     if (count_result.scalar_one() or 0) == 0:
         raise HTTPException(status_code=400, detail="Add at least one entry before submitting")
+
+    if not (submitted_by or "").strip():
+        latest_operator = await db.execute(
+            select(Reading.operator_identifier)
+            .where(Reading.form_instance_id == form_instance.id)
+            .order_by(Reading.sequence.desc())
+            .limit(1)
+        )
+        submitted_by = latest_operator.scalar_one_or_none() or form_instance.last_edited_by
+
+    submitted_by = require_operator_identifier(submitted_by, field="submitted_by")
 
     form_instance.status = FormStatus.SUBMITTED
     form_instance.submitted_at = datetime.utcnow()

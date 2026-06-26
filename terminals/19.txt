@@ -1,0 +1,13 @@
+---
+pid: 36948
+cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
+command: "Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 2; cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\"; python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload"
+started_at: 2026-06-26T05:03:30.990Z
+running_for_ms: 1295003  
+---
+INFO:     Will watch for changes in these directories: ['C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [34840] using WatchFiles
+INFO:     Started server process [9320]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

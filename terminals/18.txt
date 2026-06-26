@@ -1,0 +1,14 @@
+---
+pid: 27620
+cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
+command: "Stop-Process -Id 31896 -Force -ErrorAction SilentlyContinue ; Start-Sleep -Seconds 1 ; cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\" ; if (Test-Path .venv\\Scripts\\python.exe) { .\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload } else { python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload }"
+started_at: 2026-06-26T04:31:27.601Z
+running_for_ms: 3219998  
+---
+INFO:     Will watch for changes in these directories: ['C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [18472] using WatchFiles
+INFO:     Started server process [38080]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ WARNING:  WatchFiles detected changes in 'app\services\form_persistence.py', 'app\main.py', 'app\api\forms.py'. Reloading...

@@ -31,7 +31,7 @@
     </header>
 
     {% if role == 'manager' and can_mark_ready %}
-    <section class="berton-card p-6 section-review">
+    <section class="berton-card p-6">
         <h2 class="section-title mb-2">Awaiting Review</h2>
         <p class="text-[var(--berton-text-muted)] mb-4">All forms are submitted. Proceed to upload the EzyWine listing and compile the final document.</p>
         <form action="/batches/{{ batch.id }}/mark-ready" method="POST">
@@ -86,10 +86,9 @@
         <div class="form-grid">
             {% for form_type, form_info in form_status.items() %}
             {% if can_edit_forms %}
-            <a href="/batches/{{ batch.id }}/forms/{{ form_type }}"
-               class="form-card {% if form_info.status == 'submitted' %}status-submitted-card{% elif form_info.status == 'in_progress' %}status-in-progress-card{% elif form_info.status == 'edited_since_submit' %}status-edited-card{% endif %}">
+            <a href="/batches/{{ batch.id }}/forms/{{ form_type }}" class="form-card">
             {% else %}
-            <div class="form-card form-card-locked {% if form_info.status == 'submitted' %}status-submitted-card{% endif %}">
+            <div class="form-card form-card-locked">
             {% endif %}
                 <div class="form-card-inner">
                     <div class="form-card-content">

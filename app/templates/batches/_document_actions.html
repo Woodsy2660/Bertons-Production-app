@@ -1,8 +1,8 @@
 {% macro doc_remove_form(batch, doc, redirect_to) %}
 <form action="/batches/{{ batch.id }}/documents/{{ doc.id }}/delete" method="POST" class="doc-remove-form"
-      onsubmit="return confirm('Remove this document?');">
+      onsubmit="return confirm('Delete this document?');">
     <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
-    <button type="submit" class="btn-danger btn-sm">Remove</button>
+    <button type="submit" class="btn-icon-x" aria-label="Delete document" title="Delete document">&times;</button>
 </form>
 {% endmacro %}
 

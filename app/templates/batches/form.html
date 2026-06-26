@@ -1,10 +1,13 @@
 {% extends "base.html" %}
+{% from "batches/_readings_table.html" import readings_table_head, readings_table_body %}
 
 {% block title %}{{ form_template.form_type.value.replace('_', ' ').title() }} - Run {{ batch.run_number }}{% endblock %}
 
 {% block content %}
 <div id="form-save-root" class="max-w-5xl mx-auto space-y-6"
-     data-batch-id="{{ batch.id }}" data-form-type="{{ form_template.form_type.value }}">
+     data-batch-id="{{ batch.id }}" data-form-type="{{ form_template.form_type.value }}"
+     data-can-delete-readings="{{ 'true' if not form_readonly else 'false' }}"
+     data-readings-preview-limit="5">
 
     <div id="form-save-status" class="form-save-status" data-state="idle" hidden aria-live="polite">
         Saved
@@ -24,6 +27,10 @@
             {% with status=(form_instance.status.value if form_instance else 'not_started') %}{% include "batches/_form_status.html" %}{% endwith %}
         </span>
     </div>
+
+    {% if delete_error %}
+    <div class="berton-alert berton-alert-error">{{ delete_error }}</div>
+    {% endif %}
 
     {% if form_readonly %}
     <div class="berton-alert berton-alert-info">This run is read-only — you cannot add or change entries.</div>
@@ -188,56 +195,6 @@
         </form>
         {% endif %}
 
-        {# Saved readings (each entry persisted immediately on add) #}
-        <div class="berton-card p-6">
-            <h2 class="text-2xl text-[var(--berton-burgundy)] mb-4">Entries (<span id="readings-count">{{ readings|length }}</span>)</h2>
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-base">
-                    <thead class="bg-[var(--berton-warm)]">
-                        <tr>
-                            <th class="px-3 py-2 text-left">#</th>
-                            <th class="px-3 py-2 text-left">Time</th>
-                            <th class="px-3 py-2 text-left">Operator</th>
-                            {% if form_template.form_type.value == 'carton_qc' %}
-                            <th class="px-3 py-2 text-left">Section</th>
-                            {% elif form_template.form_type.value == 'final_pallet_count' %}
-                            <th class="px-3 py-2 text-left">Section</th>
-                            {% endif %}
-                            <th class="px-3 py-2 text-left">Summary</th>
-                        </tr>
-                    </thead>
-                    <tbody id="readings-tbody" class="divide-y divide-[var(--berton-border)]">
-                        {% for reading in readings %}
-                        <tr>
-                            <td class="px-3 py-2">{{ reading.sequence }}</td>
-                            <td class="px-3 py-2">{{ reading.captured_at.strftime('%H:%M') }}</td>
-                            <td class="px-3 py-2">{{ reading.operator_identifier }}</td>
-                            {% if form_template.form_type.value == 'carton_qc' %}
-                            <td class="px-3 py-2">{{ reading.payload.get('table', '')|replace('_', ' ')|title }}</td>
-                            {% elif form_template.form_type.value == 'final_pallet_count' %}
-                            <td class="px-3 py-2">{{ reading.payload.get('region', '')|title }}</td>
-                            {% endif %}
-                            <td class="px-3 py-2 text-[var(--berton-text-muted)]">
-                                {% if reading.payload.get('carton_code') %}{{ reading.payload.carton_code }}{% endif %}
-                                {% if reading.payload.get('pallet_no') %}Pallet {{ reading.payload.pallet_no }}{% endif %}
-                                {% if reading.payload.get('high') %}High: {{ reading.payload.high }}{% endif %}
-                                {% if reading.payload.get('batch_number') %}{{ reading.payload.batch_number }}{% endif %}
-                                {% if reading.payload.get('record_carton_print') %}{{ reading.payload.record_carton_print }}{% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr class="readings-empty">
-                            <td colspan="{% if form_template.form_type.value in ['carton_qc', 'final_pallet_count'] %}5{% else %}4{% endif %}"
-                                class="px-3 py-4 text-center text-[var(--berton-text-muted)]">
-                                No entries yet — each reading saves immediately when added.
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         {# CARTON QC — two separate sections #}
         {% if not form_readonly and form_template.form_type.value == 'carton_qc' %}
         {% set carton_field_keys = ['carton_manufacturer', 'carton_code', 'qty_on_pallet', 'carton_code_match', 'batch_number_pallet_tag', 'dividers_match', 'stickers_match', 'initials'] %}
@@ -389,16 +346,38 @@
         </div>
         {% endif %}
 
+        {# Saved readings — preview latest 5; full list on separate page #}
+        {% set total_readings = readings|length %}
+        {% set preview_readings = readings[-5:] if total_readings > 5 else readings %}
+        <div class="berton-card p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-2xl text-[var(--berton-burgundy)] mb-0">
+                    Entries (<span id="readings-count">{{ total_readings }}</span>)
+                </h2>
+                <a id="readings-show-all"
+                   href="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}/entries"
+                   class="btn-secondary btn-sm"
+                   {% if total_readings <= 5 %}hidden{% endif %}>
+                    Show all ({{ total_readings }})
+                </a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-base">
+                    {{ readings_table_head(form_template.form_type.value, allow_delete=not form_readonly) }}
+                    {{ readings_table_body(
+                        preview_readings,
+                        form_template.form_type.value,
+                        allow_delete=not form_readonly,
+                        batch_id=batch.id,
+                        redirect_to='/batches/' ~ batch.id|string ~ '/forms/' ~ form_template.form_type.value
+                    ) }}
+                </table>
+            </div>
+        </div>
+
         {% if not form_readonly %}
-        <div id="form-complete-panel" class="berton-card p-6" {% if not readings %}hidden{% endif %}>
-            <form action="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}/submit" method="POST"
-                  class="flex flex-wrap justify-between items-center gap-4">
-                <div class="flex-1 min-w-[200px]">
-                    <p class="text-[var(--berton-text-muted)] text-lg mb-3">Mark this form complete when finished.</p>
-                    <label for="submitted_by" class="berton-label">Your initials <span class="text-red-600">*</span></label>
-                    <input type="text" id="submitted_by" name="submitted_by" required
-                           class="berton-input max-w-xs" placeholder="e.g. JSM" autocomplete="off" maxlength="20">
-                </div>
+        <div id="form-complete-panel" class="flex justify-end" {% if not readings %}hidden{% endif %}>
+            <form id="form-complete-form" action="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}/submit" method="POST">
                 <button type="submit" class="btn-primary btn-gold">Mark Form Complete</button>
             </form>
         </div>
@@ -411,5 +390,5 @@
 {% block head %}
 <script src="/static/js/gs1-parse.js" defer></script>
 <script src="/static/js/barcode-scan.js" defer></script>
-<script src="/static/js/form-save.js" defer></script>
+<script src="/static/js/form-save.js?v=3" defer></script>
 {% endblock %}

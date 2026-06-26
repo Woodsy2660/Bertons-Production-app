@@ -8,6 +8,7 @@
     const QUEUE_KEY = "berton_form_save_queue";
     const DEBOUNCE_MS = 900;
     const RETRY_INTERVAL_MS = 30000;
+    const DEFAULT_PREVIEW_LIMIT = 5;
 
     function getQueue() {
         try {
@@ -58,6 +59,7 @@
     async function postJson(url, body) {
         const response = await fetch(url, {
             method: "POST",
+            credentials: "same-origin",
             headers: {
                 "Content-Type": "application/json",
                 Accept: "application/json",
@@ -136,36 +138,90 @@
         updateQueuedCount(bar);
     }
 
-    function appendReadingRow(reading, formType) {
+    function getPreviewLimit(root) {
+        const raw = root?.dataset.readingsPreviewLimit;
+        const parsed = parseInt(raw || "", 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PREVIEW_LIMIT;
+    }
+
+    function hasSectionColumn(formType) {
+        return formType === "carton_qc" || formType === "final_pallet_count";
+    }
+
+    function buildDeleteCell(canDelete, readingId, batchId, formType) {
+        if (!canDelete) return "";
+        const redirectTo = window.location.pathname;
+        return `<td class="px-2 py-2 text-right w-12">
+            <form method="POST"
+                  action="/batches/${batchId}/forms/${formType}/readings/${readingId}/delete"
+                  class="reading-delete-form inline-flex"
+                  onsubmit="return confirm('Delete this entry?');">
+                <input type="hidden" name="redirect_to" value="${redirectTo}">
+                <button type="submit"
+                        class="btn-icon-x"
+                        aria-label="Delete entry"
+                        title="Delete entry">&times;</button>
+            </form>
+        </td>`;
+    }
+
+    function buildReadingRow(reading, formType, canDelete, batchId) {
+        let sectionCell = "";
+        if (hasSectionColumn(formType)) {
+            sectionCell = `<td class="px-3 py-2">${reading.section || ""}</td>`;
+        }
+
+        return `
+            <tr data-reading-id="${reading.id}" data-sequence="${reading.sequence}">
+                <td class="px-3 py-2">${reading.sequence}</td>
+                <td class="px-3 py-2">${reading.captured_at}</td>
+                <td class="px-3 py-2">${reading.operator_identifier}</td>
+                ${sectionCell}
+                <td class="px-3 py-2 text-[var(--berton-text-muted)]">${reading.summary || ""}</td>
+                ${buildDeleteCell(canDelete, reading.id, batchId, formType)}
+            </tr>
+        `;
+    }
+
+    function updateReadingsCount(count) {
+        const countEl = document.getElementById("readings-count");
+        if (countEl) countEl.textContent = String(count);
+    }
+
+    function updateShowAllLink(count, batchId, formType, previewLimit) {
+        const link = document.getElementById("readings-show-all");
+        if (!link) return;
+
+        if (count > previewLimit) {
+            link.hidden = false;
+            link.textContent = `Show all (${count})`;
+            link.href = `/batches/${batchId}/forms/${formType}/entries`;
+        } else {
+            link.hidden = true;
+        }
+    }
+
+    function updateCompletePanel(count) {
+        const completePanel = document.getElementById("form-complete-panel");
+        if (completePanel) completePanel.hidden = count === 0;
+    }
+
+    function trimPreviewRows(tbody, previewLimit) {
+        const rows = Array.from(tbody.querySelectorAll("tr[data-reading-id]"));
+        while (rows.length > previewLimit) {
+            rows.shift()?.remove();
+        }
+    }
+
+    function appendReadingRow(reading, formType, canDelete, previewLimit, batchId) {
         const tbody = document.getElementById("readings-tbody");
         if (!tbody) return;
 
         const empty = tbody.querySelector(".readings-empty");
         if (empty) empty.remove();
 
-        const tr = document.createElement("tr");
-        let sectionCell = "";
-        if (formType === "carton_qc" || formType === "final_pallet_count") {
-            sectionCell = `<td class="px-3 py-2">${reading.section || ""}</td>`;
-        }
-
-        tr.innerHTML = `
-            <td class="px-3 py-2">${reading.sequence}</td>
-            <td class="px-3 py-2">${reading.captured_at}</td>
-            <td class="px-3 py-2">${reading.operator_identifier}</td>
-            ${sectionCell}
-            <td class="px-3 py-2 text-[var(--berton-text-muted)]">${reading.summary || ""}</td>
-        `;
-        tbody.appendChild(tr);
-
-        const countEl = document.getElementById("readings-count");
-        if (countEl) {
-            const current = parseInt(countEl.textContent, 10) || 0;
-            countEl.textContent = String(Math.max(current, reading.sequence));
-        }
-
-        const completePanel = document.getElementById("form-complete-panel");
-        if (completePanel) completePanel.hidden = false;
+        tbody.insertAdjacentHTML("beforeend", buildReadingRow(reading, formType, canDelete, batchId));
+        trimPreviewRows(tbody, previewLimit);
     }
 
     function resetReadingForm(form, keepOperator) {
@@ -187,7 +243,7 @@
         }
     }
 
-    function bindReadingForm(form, batchId, formType, bar) {
+    function bindReadingForm(form, batchId, formType, bar, canDelete, previewLimit) {
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
 
@@ -204,10 +260,11 @@
             try {
                 const result = await postJson(url, body);
                 setStatus(bar, "saved", "Entry saved");
-                appendReadingRow(result.reading, formType);
-                const countEl = document.getElementById("readings-count");
-                if (countEl && result.reading_count) {
-                    countEl.textContent = String(result.reading_count);
+                appendReadingRow(result.reading, formType, canDelete, previewLimit, batchId);
+                if (result.reading_count != null) {
+                    updateReadingsCount(result.reading_count);
+                    updateShowAllLink(result.reading_count, batchId, formType, previewLimit);
+                    updateCompletePanel(result.reading_count);
                 }
                 resetReadingForm(form, true);
                 window.setTimeout(() => {
@@ -277,23 +334,17 @@
         });
     }
 
-    function bindSubmitPanel(panel, batchId, formType, bar) {
-        panel.addEventListener("submit", async (event) => {
+    function bindSubmitPanel(batchId, formType, bar) {
+        const form = document.getElementById("form-complete-form");
+        if (!form) return;
+
+        form.addEventListener("submit", async (event) => {
             event.preventDefault();
-            const initialsInput = panel.querySelector('[name="submitted_by"]');
-            const submittedBy = initialsInput?.value?.trim();
-            if (!submittedBy) {
-                setStatus(bar, "error", "Enter your initials before marking complete.");
-                initialsInput?.focus();
-                return;
-            }
 
             setStatus(bar, "saving", "Marking form complete…");
 
             try {
-                await postJson(`/api/batches/${batchId}/forms/${formType}/submit`, {
-                    submitted_by: submittedBy,
-                });
+                await postJson(`/api/batches/${batchId}/forms/${formType}/submit`, {});
                 setStatus(bar, "saved", "Form marked complete");
                 window.location.href = `/batches/${batchId}`;
             } catch (err) {
@@ -332,9 +383,11 @@
         const batchId = root.dataset.batchId;
         const formType = root.dataset.formType;
         const bar = document.getElementById("form-save-status");
+        const canDelete = root.dataset.canDeleteReadings === "true";
+        const previewLimit = getPreviewLimit(root);
 
         document.querySelectorAll("form.js-reading-form").forEach((form) => {
-            bindReadingForm(form, batchId, formType, bar);
+            bindReadingForm(form, batchId, formType, bar, canDelete, previewLimit);
         });
 
         document.querySelectorAll("form.js-auto-save-header").forEach((form) => {
@@ -346,10 +399,7 @@
             bindAtomicSubmit(form, batchId, formType, bar);
         });
 
-        const completePanel = document.getElementById("form-complete-panel");
-        if (completePanel) {
-            bindSubmitPanel(completePanel, batchId, formType, bar);
-        }
+        bindSubmitPanel(batchId, formType, bar);
 
         updateQueuedCount(bar);
         replayQueue(bar);

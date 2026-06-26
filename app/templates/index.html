@@ -2,89 +2,82 @@
 
 {% block title %}Bottling Runs - Berton Bottling{% endblock %}
 
+{% macro run_card(batch, status_label, status_modifier) %}
+<a href="/batches/{{ batch.id }}" class="run-card">
+    <div class="run-card-head">
+        <span class="run-card-title">Run {{ batch.run_number }}</span>
+        <span class="run-card-status run-card-status--{{ status_modifier }}">{{ status_label }}</span>
+    </div>
+    <p class="run-card-meta">
+        {% if batch.header and batch.header.run_date %}
+        {{ batch.header.run_date.strftime('%d %b %Y') }}
+        {% else %}
+        {{ batch.created_at.strftime('%d %b %Y') }}
+        {% endif %}
+    </p>
+</a>
+{% endmacro %}
+
 {% block content %}
-<div class="space-y-10">
-    <header class="page-header">
-        <h1 class="text-4xl text-[var(--berton-burgundy)]">Bottling Runs</h1>
-        <p class="text-[var(--berton-text-muted)] text-lg mt-2">
-            {% if role == 'manager' %}
-            Manage active production runs and review completed batches.
-            {% else %}
-            Today's runs and recently completed batches.
-            {% endif %}
-        </p>
+<div class="dashboard">
+    <header class="dashboard-header flex flex-wrap items-center justify-between gap-4">
+        <div>
+            <h1 class="dashboard-title">Bottling Runs</h1>
+            <p class="dashboard-subtitle">
+                {% if role == 'manager' %}
+                Active production, review queue, and completed runs.
+                {% else %}
+                Today's runs and recently completed batches.
+                {% endif %}
+            </p>
+        </div>
+        {% if role == 'manager' %}
+        <a href="/batches/new" class="btn-primary text-lg">+ Start New Run</a>
+        {% endif %}
     </header>
 
-    {% if role == 'manager' and review_queue %}
-    <section class="berton-card p-6 section-review">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 class="section-title">Awaiting Review</h2>
-            <span class="review-queue-badge">{{ review_count }} run{{ 's' if review_count != 1 else '' }}</span>
-        </div>
+    {% if active_batches %}
+    <section class="dashboard-section">
+        <h2 class="dashboard-section-title">Active Runs</h2>
         <div class="run-grid">
-            {% for batch in review_queue %}
-            <a href="/batches/{{ batch.id }}" class="run-card run-card-review">
-                <span class="run-number">Run {{ batch.run_number }}</span>
-                <span class="status-badge status-awaiting-review">Awaiting Review</span>
-                <p class="run-card-date">All forms submitted</p>
-            </a>
+            {% for batch in active_batches %}
+            {% set status_label = batch.status.value.replace('_', ' ').title() %}
+            {% set status_modifier = batch.status.value.replace('_', '-') %}
+            {{ run_card(batch, status_label, status_modifier) }}
             {% endfor %}
         </div>
     </section>
     {% endif %}
 
-    {% if active_batches %}
-    <section>
-        <h2 class="section-title mb-4">Active Runs</h2>
+    {% if role == 'manager' and review_queue %}
+    <section class="dashboard-section">
+        <h2 class="dashboard-section-title">
+            Awaiting Review
+            <span class="dashboard-section-count">{{ review_count }}</span>
+        </h2>
         <div class="run-grid">
-            {% for batch in active_batches %}
-            <a href="/batches/{{ batch.id }}" class="run-card">
-                <span class="run-number">Run {{ batch.run_number }}</span>
-                <span class="status-badge
-                    {% if batch.status.value == 'awaiting_review' %}status-awaiting-review
-                    {% elif batch.status.value == 'in_progress' %}status-in-progress
-                    {% elif batch.status.value == 'reopened' %}status-reopened
-                    {% else %}status-in-progress{% endif %}">
-                    {{ batch.status.value.replace('_', ' ').title() }}
-                </span>
-                <p class="run-card-date">
-                    {% if batch.header and batch.header.run_date %}
-                    Run date {{ batch.header.run_date.strftime('%d %b %Y') }}
-                    {% else %}
-                    Started {{ batch.created_at.strftime('%d %b %Y') }}
-                    {% endif %}
-                </p>
-            </a>
+            {% for batch in review_queue %}
+            {{ run_card(batch, 'Awaiting Review', 'review') }}
             {% endfor %}
         </div>
     </section>
     {% endif %}
 
     {% if complete_batches %}
-    <section>
-        <h2 class="section-title mb-4">Completed Runs</h2>
+    <section class="dashboard-section">
+        <h2 class="dashboard-section-title">Completed Runs</h2>
         <div class="run-grid">
             {% for batch in complete_batches %}
-            <a href="/batches/{{ batch.id }}" class="run-card run-card-complete">
-                <span class="run-number">Run {{ batch.run_number }}</span>
-                <span class="status-badge status-complete">Complete</span>
-                <p class="run-card-date">
-                    {% if batch.header and batch.header.run_date %}
-                    Run date {{ batch.header.run_date.strftime('%d %b %Y') }}
-                    {% else %}
-                    Started {{ batch.created_at.strftime('%d %b %Y') }}
-                    {% endif %}
-                </p>
-            </a>
+            {{ run_card(batch, 'Complete', 'complete') }}
             {% endfor %}
         </div>
     </section>
     {% endif %}
 
     {% if not active_batches and not complete_batches and not review_queue %}
-    <div class="berton-card p-12 text-center">
-        <h2 class="text-2xl text-[var(--berton-burgundy)] mb-2">No runs to show</h2>
-        <p class="text-[var(--berton-text-muted)] text-lg mb-6">
+    <div class="dashboard-empty">
+        <h2 class="dashboard-empty-title">No runs to show</h2>
+        <p class="dashboard-empty-text">
             {% if role == 'manager' %}
             Upload a work order to start a bottling run.
             {% else %}

@@ -19,6 +19,7 @@ from app.services.form_persistence import (
     add_reading,
     build_form_payload_from_mapping,
     build_pick_list_lines,
+    delete_reading,
     get_open_batch,
     save_atomic_form,
     save_form_header,
@@ -56,7 +57,12 @@ class ReadingCreate(BaseModel):
 
 
 class AccrualSubmitBody(BaseModel):
-    submitted_by: str = Field(..., min_length=1)
+    submitted_by: str | None = None
+
+
+class ReadingDeleteResponse(BaseModel):
+    ok: bool = True
+    reading_count: int
 
 
 def _reading_count_query(form_instance_id: uuid.UUID):
@@ -133,6 +139,71 @@ async def api_add_reading(
         reading_count=reading_count,
         reading=serialize_reading(reading, form_type),
     )
+
+
+@router.post(
+    "/{batch_id}/forms/{form_type}/readings/{reading_id}/delete",
+    response_model=ReadingDeleteResponse,
+)
+async def api_delete_reading_post(
+    batch_id: uuid.UUID,
+    form_type: str,
+    reading_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+) -> ReadingDeleteResponse:
+    """Delete one accrual entry (POST for broad client compatibility)."""
+    return await _api_delete_reading_impl(
+        batch_id, form_type, reading_id, db, role
+    )
+
+
+@router.delete(
+    "/{batch_id}/forms/{form_type}/readings/{reading_id}",
+    response_model=ReadingDeleteResponse,
+)
+async def api_delete_reading(
+    batch_id: uuid.UUID,
+    form_type: str,
+    reading_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+) -> ReadingDeleteResponse:
+    """Delete one accrual entry."""
+    return await _api_delete_reading_impl(
+        batch_id, form_type, reading_id, db, role
+    )
+
+
+async def _api_delete_reading_impl(
+    batch_id: uuid.UUID,
+    form_type: str,
+    reading_id: uuid.UUID,
+    db: AsyncSession,
+    role: Role,
+) -> ReadingDeleteResponse:
+    try:
+        FormType(form_type)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Unknown form type")
+
+    batch = await get_open_batch(db, batch_id, role)
+
+    try:
+        _, reading_count = await delete_reading(
+            db,
+            batch,
+            form_type,
+            reading_id,
+            role=role,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {e}")
+
+    return ReadingDeleteResponse(reading_count=reading_count)
 
 
 @router.post("/{batch_id}/forms/{form_type}/header", response_model=SaveResponse)

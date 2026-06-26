@@ -57,6 +57,7 @@ from app.services.compilation import compile_batch
 from app.services.form_persistence import (
     add_reading as persist_reading,
     build_pick_list_lines,
+    delete_reading,
     save_atomic_form as persist_atomic_form,
     save_form_header as persist_form_header,
     submit_accrual_form,
@@ -698,6 +699,7 @@ async def form_view(
             pick_list_lines = filter_label_lines(parsed.get("pick_list_lines") or [])
 
     form_readonly = not can_write_forms(batch, role)
+    delete_error = request.query_params.get("error")
 
     return templates.TemplateResponse(
         request,
@@ -713,6 +715,57 @@ async def form_view(
             "now": datetime.now(),
             "role": role,
             "form_readonly": form_readonly,
+            "delete_error": delete_error,
+        },
+    )
+
+
+@app.get("/batches/{batch_id}/forms/{form_type}/entries")
+async def form_entries_list(
+    request: Request,
+    batch_id: uuid.UUID,
+    form_type: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    """Full scrollable list of accrual form entries."""
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    try:
+        ft = FormType(form_type)
+        form_template = get_form_template(ft)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Unknown form type")
+
+    if form_template.accrual_mode.value == "atomic":
+        raise HTTPException(status_code=404, detail="This form has no entry log")
+
+    fi_result = await db.execute(
+        select(FormInstance)
+        .options(selectinload(FormInstance.readings))
+        .where(FormInstance.batch_id == batch_id)
+        .where(FormInstance.form_type == ModelFormType(form_type))
+    )
+    form_instance = fi_result.scalar_one_or_none()
+    form_readonly = not can_write_forms(batch, role)
+    delete_error = request.query_params.get("error")
+
+    return templates.TemplateResponse(
+        request,
+        "batches/entries.html",
+        {
+            "batch": batch,
+            "form_template": form_template,
+            "form_instance": form_instance,
+            "readings": sorted(form_instance.readings, key=lambda r: r.sequence) if form_instance else [],
+            "role": role,
+            "form_readonly": form_readonly,
+            "delete_error": delete_error,
         },
     )
 
@@ -757,6 +810,49 @@ async def save_atomic_form(
         raise HTTPException(status_code=500, detail=f"Failed to save form: {e}")
 
     return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
+
+
+@app.post("/batches/{batch_id}/forms/{form_type}/readings/{reading_id}/delete")
+async def delete_reading_route(
+    batch_id: uuid.UUID,
+    form_type: str,
+    reading_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    redirect_to: str = Form(""),
+):
+    """Delete one accrual entry and return to the form."""
+    from urllib.parse import quote
+
+    dest = _safe_redirect(
+        redirect_to or f"/batches/{batch_id}/forms/{form_type}",
+        batch_id,
+    )
+
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if not batch:
+        return RedirectResponse(
+            url=f"{dest}?error={quote('Batch not found')}",
+            status_code=303,
+        )
+
+    try:
+        await delete_reading(db, batch, form_type, reading_id, role=role)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Could not delete entry"
+        return RedirectResponse(
+            url=f"{dest}?error={quote(detail)}",
+            status_code=303,
+        )
+    except Exception as e:
+        await db.rollback()
+        return RedirectResponse(
+            url=f"{dest}?error={quote(f'Failed to delete entry: {e}')}",
+            status_code=303,
+        )
+
+    return RedirectResponse(url=dest, status_code=303)
 
 
 @app.post("/batches/{batch_id}/forms/{form_type}/readings")
@@ -849,12 +945,10 @@ async def save_form_header(
 
 @app.post("/batches/{batch_id}/forms/{form_type}/submit")
 async def submit_form(
-    request: Request,
     batch_id: uuid.UUID,
     form_type: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_operator_or_manager)],
-    submitted_by: str = Form(...),
 ):
     """Submit an accrual form."""
     try:
@@ -862,7 +956,6 @@ async def submit_form(
             db,
             batch_id,
             form_type,
-            submitted_by=submitted_by,
             role=role,
         )
     except HTTPException:
