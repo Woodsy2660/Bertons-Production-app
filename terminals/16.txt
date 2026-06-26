@@ -3,7 +3,7 @@ pid: 31580
 cwd: "C:\Users\bwood\OneDrive\Desktop\Bertons-Production-app"
 command: "cd \"C:\\Users\\bwood\\OneDrive\\Desktop\\Bertons-Production-app\" ; python -m uvicorn app.main:app --host 127.0.0.1 --port 8001"
 started_at: 2026-06-25T22:41:33.494Z
-running_for_ms: 20075003 
+running_for_ms: 20415006 
 ---
 INFO:     Started server process [11496]
 INFO:     Waiting for application startup.
@@ -591,3 +591,41 @@ WHERE batch_headers.batch_id IN ($1::UUID)
 2026-06-26 12:40:03,404 INFO sqlalchemy.engine.Engine [cached since 1.428e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
 INFO:     127.0.0.1:65015 - "GET / HTTP/1.1" 200 OK
 2026-06-26 12:40:03,415 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-26 14:16:32,385 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-26 14:16:32,392 INFO sqlalchemy.engine.Engine SELECT batches.id, batches.run_number, batches.status, batches.is_locked, batches.created_by, batches.created_at, batches.updated_at 
+FROM batches 
+WHERE batches.id = $1::UUID
+2026-06-26 14:16:32,392 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
+2026-06-26 14:16:32,430 INFO sqlalchemy.engine.Engine SELECT batch_headers.batch_id AS batch_headers_batch_id, batch_headers.id AS batch_headers_id, batch_headers.product AS batch_headers_product, batch_headers.stock_item AS batch_headers_stock_item, batch_headers.tank AS batch_headers_tank, batch_headers.run_date AS batch_headers_run_date, batch_headers.packing_unit AS batch_headers_packing_unit, batch_headers.packaging_line AS batch_headers_packaging_line, batch_headers.run_quantity AS batch_headers_run_quantity, batch_headers.pick_list_lines AS batch_headers_pick_list_lines, batch_headers.extra AS batch_headers_extra 
+FROM batch_headers 
+WHERE batch_headers.batch_id IN ($1::UUID)
+2026-06-26 14:16:32,430 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
+2026-06-26 14:16:32,443 INFO sqlalchemy.engine.Engine SELECT form_instances.batch_id AS form_instances_batch_id, form_instances.id AS form_instances_id, form_instances.form_type AS form_instances_form_type, form_instances.accrual_mode AS form_instances_accrual_mode, form_instances.status AS form_instances_status, form_instances.header_payload AS form_instances_header_payload, form_instances.submitted_by AS form_instances_submitted_by, form_instances.submitted_at AS form_instances_submitted_at, form_instances.last_edited_by AS form_instances_last_edited_by, form_instances.last_edited_at AS form_instances_last_edited_at 
+FROM form_instances 
+WHERE form_instances.batch_id IN ($1::UUID)
+2026-06-26 14:16:32,443 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
+2026-06-26 14:16:32,479 INFO sqlalchemy.engine.Engine SELECT compilations.batch_id AS compilations_batch_id, compilations.id AS compilations_id, compilations.output_filename AS compilations_output_filename, compilations.stored_path AS compilations_stored_path, compilations.slot_manifest AS compilations_slot_manifest, compilations.is_current AS compilations_is_current, compilations.compiled_by AS compilations_compiled_by, compilations.compiled_at AS compilations_compiled_at 
+FROM compilations 
+WHERE compilations.batch_id IN ($1::UUID)
+2026-06-26 14:16:32,479 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
+2026-06-26 14:16:32,489 INFO sqlalchemy.engine.Engine SELECT uploaded_documents.batch_id AS uploaded_documents_batch_id, uploaded_documents.id AS uploaded_documents_id, uploaded_documents.slot AS uploaded_documents_slot, uploaded_documents.sequence AS uploaded_documents_sequence, uploaded_documents.original_filename AS uploaded_documents_original_filename, uploaded_documents.stored_path AS uploaded_documents_stored_path, uploaded_documents.page_count AS uploaded_documents_page_count, uploaded_documents.uploaded_by AS uploaded_documents_uploaded_by, uploaded_documents.uploaded_at AS uploaded_documents_uploaded_at 
+FROM uploaded_documents 
+WHERE uploaded_documents.batch_id IN ($1::UUID)
+2026-06-26 14:16:32,489 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
+2026-06-26 14:16:32,497 INFO sqlalchemy.engine.Engine SELECT readings.form_instance_id AS readings_form_instance_id, readings.id AS readings_id, readings.sequence AS readings_sequence, readings.captured_at AS readings_captured_at, readings.operator_identifier AS readings_operator_identifier, readings.payload AS readings_payload, readings.created_at AS readings_created_at, readings.updated_at AS readings_updated_at 
+FROM readings 
+WHERE readings.form_instance_id IN ($1::UUID, $2::UUID, $3::UUID, $4::UUID, $5::UUID, $6::UUID, $7::UUID, $8::UUID, $9::UUID)
+2026-06-26 14:16:32,498 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('c159ee90-0ab2-4746-b368-8b0533a1f683'), UUID('a4dd3aa8-3c1e-4e4a-b8b3-7429f5f80241'), UUID('a1b59d5f-abdb-4cc8-9249-26632e83e8d8'), UUID('1dc9dc4b-9874-4022-89d0-14f0c9bcd6a8'), UUID('7a0cd8a9-ea45-462c-9954-37e7932712fc'), UUID('8fd0958e-391d-4701-a8ae-ce3b11df1c51'), UUID('60083969-4fdc-412b-8e1e-ccdb1c0ffb18'), UUID('4b513726-3762-49e4-b07c-f9e3881a4781'), UUID('ae24966f-f88f-4b4c-bb43-4bfa54f22a02'))
+INFO:     127.0.0.1:56321 - "GET /batches/146a98d5-d786-405d-b89e-a3745caf6d8a HTTP/1.1" 200 OK
+2026-06-26 14:16:32,548 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-26 14:16:35,455 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-26 14:16:35,456 INFO sqlalchemy.engine.Engine SELECT batches.id, batches.run_number, batches.status, batches.is_locked, batches.created_by, batches.created_at, batches.updated_at 
+FROM batches ORDER BY batches.created_at DESC 
+ LIMIT $1::INTEGER
+2026-06-26 14:16:35,456 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (500,)
+2026-06-26 14:16:35,470 INFO sqlalchemy.engine.Engine SELECT batch_headers.batch_id AS batch_headers_batch_id, batch_headers.id AS batch_headers_id, batch_headers.product AS batch_headers_product, batch_headers.stock_item AS batch_headers_stock_item, batch_headers.tank AS batch_headers_tank, batch_headers.run_date AS batch_headers_run_date, batch_headers.packing_unit AS batch_headers_packing_unit, batch_headers.packaging_line AS batch_headers_packaging_line, batch_headers.run_quantity AS batch_headers_run_quantity, batch_headers.pick_list_lines AS batch_headers_pick_list_lines, batch_headers.extra AS batch_headers_extra 
+FROM batch_headers 
+WHERE batch_headers.batch_id IN ($1::UUID)
+2026-06-26 14:16:35,470 INFO sqlalchemy.engine.Engine [cached since 2.007e+04s ago] (UUID('146a98d5-d786-405d-b89e-a3745caf6d8a'),)
+INFO:     127.0.0.1:63756 - "GET / HTTP/1.1" 200 OK
+2026-06-26 14:16:35,477 INFO sqlalchemy.engine.Engine ROLLBACK

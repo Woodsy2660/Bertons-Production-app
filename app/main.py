@@ -10,7 +10,6 @@ from fastapi.responses import RedirectResponse, Response, JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth.credentials import verify_credentials
@@ -73,6 +72,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
@@ -92,15 +92,13 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# Insert before auth in the stack so SessionMiddleware runs first on each request.
-app.user_middleware.insert(
-    0,
-    Middleware(
-        SessionMiddleware,
-        secret_key=settings.secret_key,
-        https_only=settings.is_production,
-        same_site="lax",
-    ),
+# Register after auth middleware so SessionMiddleware wraps it on the outside
+# (Starlette reverses middleware order when building the ASGI app).
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    https_only=settings.is_production,
+    same_site="lax",
 )
 
 
