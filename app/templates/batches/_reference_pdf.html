@@ -1,0 +1,60 @@
+{% macro reference_pdf_viewer(doc, title, modifier='work-order', show_filename=false) %}
+<div class="reference-doc-block reference-doc-block--{{ modifier }}">
+    <div class="reference-doc-toolbar">
+        <div class="reference-doc-heading">
+            <h2 class="reference-doc-title">{{ title }}</h2>
+            {% if show_filename and doc.original_filename %}
+            <p class="reference-doc-filename">{{ doc.original_filename }}</p>
+            {% endif %}
+        </div>
+        <div class="reference-doc-actions">
+            <div class="reference-pdf-zoom-controls" aria-label="Zoom controls">
+                <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-out" title="Zoom out">−</button>
+                <span class="reference-pdf-zoom-value">100%</span>
+                <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-in" title="Zoom in">+</button>
+                <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset" data-action="zoom-reset" title="Reset zoom">Fit</button>
+            </div>
+            <a href="/uploads/{{ doc.id }}/page" target="_blank" rel="noopener" class="reference-doc-open">Open full page</a>
+        </div>
+    </div>
+    <div
+        class="reference-pdf-viewer reference-pdf-viewer--loading"
+        data-reference-pdf-viewer
+        data-pdf-url="/uploads/{{ doc.id }}/view"
+        data-fallback-url="/uploads/{{ doc.id }}/page"
+        data-initial-zoom="1"
+    >
+        <p class="reference-pdf-status">Loading document…</p>
+        <a class="reference-pdf-fallback-link" hidden target="_blank" rel="noopener">Open PDF in new tab</a>
+        <div class="reference-pdf-pages"></div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro reference_pdf_preview_shell(title, modifier='work-order', viewer_id='') %}
+<div class="reference-doc-block reference-doc-block--{{ modifier }}">
+    <div class="reference-doc-toolbar">
+        <div class="reference-doc-heading">
+            <h2 class="reference-doc-title">{{ title }}</h2>
+            <p class="reference-doc-filename reference-pdf-preview-filename"></p>
+        </div>
+        <div class="reference-doc-actions">
+            <div class="reference-pdf-zoom-controls" aria-label="Zoom controls">
+                <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-out" title="Zoom out">−</button>
+                <span class="reference-pdf-zoom-value">100%</span>
+                <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-in" title="Zoom in">+</button>
+                <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset" data-action="zoom-reset" title="Reset zoom">Fit</button>
+            </div>
+        </div>
+    </div>
+    <div
+        id="{{ viewer_id }}"
+        class="reference-pdf-viewer reference-pdf-viewer--loading"
+        data-reference-pdf-viewer
+        data-initial-zoom="1"
+    >
+        <p class="reference-pdf-status">Loading preview…</p>
+        <div class="reference-pdf-pages"></div>
+    </div>
+</div>
+{% endmacro %}

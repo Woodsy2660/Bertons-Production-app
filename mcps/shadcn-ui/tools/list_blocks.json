@@ -1,0 +1,13 @@
+{
+  "name": "list_blocks",
+  "description": "Get all available shadcn/ui v4 blocks with categorization",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "category": {
+        "type": "string",
+        "description": "Filter by category (calendar, dashboard, login, sidebar, products)"
+      }
+    }
+  }
+}

@@ -26,6 +26,7 @@ Read in order on first pass. On build, each document maps to a part of the syste
 | 04 | [`04_PDF_Compilation_Spec.md`](04_PDF_Compilation_Spec.md) | The 16-slot compile template, sources, orientation, flexible label section | Backend dev |
 | 05 | [`05_Workflow_and_Lifecycle.md`](05_Workflow_and_Lifecycle.md) | Batch states, submit/edit/lock, status board, identity capture | Full-stack dev |
 | 06 | [`06_Build_Roadmap.md`](06_Build_Roadmap.md) | Phased delivery plan, milestones, open decisions log | Lead / PM |
+| 07 | [`07_Backend_Implementation.md`](07_Backend_Implementation.md) | **As-built backend:** stack, routes, auth, DB, services, deployment | AI / backend dev |
 
 ---
 

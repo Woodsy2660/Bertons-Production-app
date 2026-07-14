@@ -1,0 +1,8 @@
+{
+  "name": "list_components",
+  "description": "Get all available shadcn/ui v4 components",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

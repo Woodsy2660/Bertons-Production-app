@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Database Unavailable — Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="berton-card p-8 text-center">
+        <h1 class="text-xl font-semibold text-primary mb-3">Database unavailable</h1>
+        <p class="text-muted mb-6">
+            The app cannot reach PostgreSQL. On local development this usually means
+            Docker Desktop or the database container is not running.
+        </p>
+
+        <div class="text-left bg-subtle rounded-lg p-5 mb-6 font-mono text-sm space-y-2">
+            <p class="font-sans font-semibold mb-2">Start the local stack:</p>
+            <p>1. Open <strong>Docker Desktop</strong> and wait until it shows "running".</p>
+            <p>2. In the project folder, run:</p>
+            <pre class="bg-white border rounded px-3 py-2 overflow-x-auto">docker compose up -d</pre>
+            <p>Or use the helper script:</p>
+            <pre class="bg-white border rounded px-3 py-2 overflow-x-auto">.\scripts\dev-up.ps1</pre>
+        </div>
+
+        <p class="text-sm text-muted mb-6">
+            Postgres should be listening on <code>localhost:5433</code>.
+            <a href="/ready" class="text-primary underline">Check readiness</a>
+            or <a href="/" class="text-primary underline">retry the dashboard</a>.
+        </p>
+
+        <button type="button" onclick="location.reload()" class="btn-primary touch-target">
+            Retry
+        </button>
+    </div>
+</div>
+{% endblock %}

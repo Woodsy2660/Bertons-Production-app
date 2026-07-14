@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request
 
 from app.auth.session import Role, get_role_from_session
 
-PUBLIC_PATHS = frozenset({"/login", "/health", "/static"})
+PUBLIC_PATHS = frozenset({"/login", "/health", "/ready", "/static"})
 
 
 def _is_public_path(path: str) -> bool:
@@ -40,4 +40,14 @@ async def require_manager(
 async def require_operator_or_manager(
     role: Annotated[Role, Depends(require_auth)],
 ) -> Role:
+    return role
+
+
+async def require_dev_tools(
+    role: Annotated[Role, Depends(require_manager)],
+) -> Role:
+    from app.config import get_settings
+
+    if not get_settings().enable_dev_tools:
+        raise HTTPException(status_code=404, detail="Not found")
     return role

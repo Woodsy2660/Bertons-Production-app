@@ -10,12 +10,21 @@ class Base(DeclarativeBase):
 
 settings = get_settings()
 
+
+def _engine_connect_args(url: str) -> dict:
+    """Supabase transaction pooler (port 6543) requires disabling prepared statements."""
+    if "supabase" in url and ":6543" in url:
+        return {"statement_cache_size": 0}
+    return {}
+
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=2,
+    connect_args=_engine_connect_args(settings.database_url),
 )
 
 async_session_maker = async_sessionmaker(

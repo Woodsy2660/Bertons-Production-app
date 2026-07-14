@@ -6,14 +6,31 @@
 {% block content %}
 <div class="space-y-8 max-w-4xl mx-auto">
     <header class="page-header">
-        <a href="/batches/{{ batch.id }}" class="back-link">&larr; Back to Run</a>
-        <h1 class="text-4xl text-[var(--berton-burgundy)] mt-2">
+        <a href="/batches/{{ batch.id }}#run-completion" class="back-link">&larr; Back to Run</a>
+        <h1 class="text-2xl text-primary font-semibold mt-2">
             {% if is_recompile %}Recompile{% else %}Complete{% endif %} Run {{ batch.run_number }}
         </h1>
-        <p class="text-[var(--berton-text-muted)] text-lg mt-2">
-            Upload the EzyWine listing and any label references, then compile and save the final PDF.
+        <p class="text-muted mt-2">
+            Add the EzyWine bottling run listing and any extra documents, then compile the final PDF. This marks the run as complete.
         </p>
+        {% if pending_forms %}
+        <p class="berton-hint mt-2 mb-0">Some production forms are not yet submitted — you can still compile. The run will be marked complete until reopened by a manager.</p>
+        {% elif batch.status.value == 'awaiting_review' %}
+        <p class="berton-hint mt-2 mb-0">All production forms are submitted.</p>
+        {% endif %}
     </header>
+
+    {% if pending_forms %}
+    <div class="berton-alert berton-alert-info">
+        <strong>{{ pending_forms|length }} form{{ 's' if pending_forms|length != 1 else '' }} not yet submitted.</strong>
+        The compiled PDF will include whatever data exists for each form.
+        <ul class="run-completion-pending mt-2 mb-0">
+            {% for form_label in pending_forms %}
+            <li>{{ form_label }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
 
     {% if compile_error %}
     <div class="berton-alert berton-alert-error">
@@ -55,8 +72,8 @@
     <section class="berton-card p-6">
         <h2 class="section-title mb-2">Compile and Save</h2>
         <p class="berton-hint mb-4">
-            Merges all forms and uploads into the final PDF and saves a copy to the server folder.
-            This marks the run as Complete.
+            Builds the final compiled PDF from the work order, all nine production forms, the EzyWine listing,
+            and any label references uploaded above. A copy is saved to the server folder and the run is marked complete.
         </p>
         {% if is_recompile %}
         <p class="berton-alert berton-alert-info mb-4">The previous PDF will be marked stale when you recompile.</p>

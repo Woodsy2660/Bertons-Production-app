@@ -1,143 +1,196 @@
 {% extends "base.html" %}
-{% from "batches/_document_actions.html" import doc_remove_form, doc_add_button, doc_label_row %}
+{% from "batches/_reference_pdf.html" import reference_pdf_viewer %}
 
 {% block title %}Run {{ batch.run_number }} - Berton Bottling{% endblock %}
 
-{% block content %}
-<div class="space-y-8 {% if is_greyed %}run-readonly{% endif %}">
+{% block body_class %}{% if role == 'operator' %}operator-run-view{% endif %}{% endblock %}
 
-    <header class="page-header flex flex-wrap items-start justify-between gap-4">
+{% block content %}
+<div class="batch-detail space-y-8 {% if is_greyed %}run-readonly{% endif %}" data-batch-id="{{ batch.id }}">
+
+    <header class="batch-detail-header page-header flex flex-wrap items-start justify-between gap-4">
         <div>
             <a href="/" class="back-link">&larr; Back to Runs</a>
-            <h1 class="text-4xl text-[var(--berton-burgundy)] mt-2">Run {{ batch.run_number }}</h1>
+            <h1 class="text-2xl text-primary font-semibold mt-2">Run {{ batch.run_number }}</h1>
             {% if batch.status.value == 'complete' %}
-            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">This run is complete and read-only.</p>
+            <p class="text-muted mt-1">This run is complete and read-only.</p>
             {% elif batch.status.value == 'reopened' and role == 'operator' %}
-            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">This run is under manager review. Forms cannot be edited.</p>
+            <p class="text-muted mt-1">This run is under manager review. Forms cannot be edited.</p>
             {% elif not can_edit_forms %}
-            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">This run is locked.</p>
+            <p class="text-muted mt-1">This run is locked.</p>
+            {% elif role == 'operator' %}
+            <p class="text-muted mt-1">Work order and label references are below. Open a form when ready.</p>
             {% else %}
-            <p class="text-[var(--berton-text-muted)] mt-1 text-lg">Review the work order, then open a form to enter data.</p>
+            <p class="text-muted mt-1">Reference documents are below. Open a form to enter data.</p>
             {% endif %}
         </div>
-        <span class="status-badge
-            {% if batch.status.value == 'complete' %}status-complete
-            {% elif batch.status.value == 'awaiting_review' %}status-awaiting-review
-            {% elif batch.status.value == 'in_progress' %}status-in-progress
-            {% elif batch.status.value == 'reopened' %}status-reopened
-            {% else %}status-in-progress{% endif %}">
-            {{ batch.status.value.replace('_', ' ').title() }}
-        </span>
+        <div class="flex flex-wrap items-center gap-3">
+            {% if can_manage_documents %}
+            <a href="/batches/{{ batch.id }}/edit" class="btn-secondary">Edit Run</a>
+            {% endif %}
+            <span class="status-badge
+                {% if batch.status.value == 'complete' %}status-complete
+                {% elif batch.status.value == 'awaiting_review' %}status-awaiting-review
+                {% elif batch.status.value == 'in_progress' %}status-in-progress
+                {% elif batch.status.value == 'reopened' %}status-reopened
+                {% else %}status-in-progress{% endif %}">
+                {{ batch.status.value.replace('_', ' ').title() }}
+            </span>
+        </div>
     </header>
 
-    {% if role == 'manager' and can_mark_ready %}
-    <section class="berton-card p-6">
-        <h2 class="section-title mb-2">Awaiting Review</h2>
-        <p class="text-[var(--berton-text-muted)] mb-4">All forms are submitted. Proceed to upload the EzyWine listing and compile the final document.</p>
-        <form action="/batches/{{ batch.id }}/mark-ready" method="POST">
-            <button type="submit" class="btn-primary btn-gold">Mark Ready</button>
-        </form>
-    </section>
-    {% endif %}
-
-    <section class="berton-card p-6">
-        <h2 class="section-title mb-4">Work Order</h2>
+    <section id="reference-docs" class="reference-docs-section" aria-label="Run reference documents">
         {% if work_order %}
-        <iframe src="/uploads/{{ work_order.id }}/view" class="pdf-viewer" title="Work order for run {{ batch.run_number }}"></iframe>
-        {% if can_manage_documents %}
-        <div class="doc-manage-bar">
-            {{ doc_remove_form(batch, work_order, '/batches/' ~ batch.id|string) }}
-        </div>
-        {% endif %}
-        {% elif can_manage_documents %}
-        {{ doc_add_button(batch, 'work_order', '/batches/' ~ batch.id|string, 'work-order') }}
+        {{ reference_pdf_viewer(work_order, 'Work Order', 'work-order') }}
         {% else %}
-        <p class="berton-hint">No work order uploaded yet.</p>
-        {% endif %}
-    </section>
-
-    <section class="berton-card p-6">
-        <h2 class="section-title mb-3">Label References</h2>
-        <p class="berton-hint mb-4">Optional reference PDFs for operators and compilation.</p>
-        {% if label_references %}
-        <ul class="doc-list{% if can_manage_documents %} mb-4{% endif %}">
-            {% for doc in label_references %}
-            {{ doc_label_row(batch, doc, can_manage_documents, '/batches/' ~ batch.id|string) }}
-            {% endfor %}
-        </ul>
-        {% elif not can_manage_documents %}
-        <p class="berton-hint">No label references uploaded.</p>
-        {% endif %}
-        {% if can_manage_documents %}
-        {{ doc_add_button(batch, 'label_reference', '/batches/' ~ batch.id|string, 'label-ref-detail') }}
-        {% endif %}
-    </section>
-
-    <section>
-        <h2 class="section-title mb-2">Forms</h2>
-        <p class="text-[var(--berton-text-muted)] text-lg mb-5">
-            {% if can_edit_forms %}
-            Select a form to enter or update data.
-            {% else %}
-            These forms are read-only.
-            {% endif %}
-        </p>
-
-        <div class="form-grid">
-            {% for form_type, form_info in form_status.items() %}
-            {% if can_edit_forms %}
-            <a href="/batches/{{ batch.id }}/forms/{{ form_type }}" class="form-card">
-            {% else %}
-            <div class="form-card form-card-locked">
-            {% endif %}
-                <div class="form-card-inner">
-                    <div class="form-card-content">
-                        <h3 class="form-card-title">{{ form_info.label }}</h3>
-                        {% if form_info.doc_number %}
-                        <p class="form-card-doc">{{ form_info.doc_number }}</p>
-                        {% else %}
-                        <p class="form-card-doc form-card-doc--empty">&nbsp;</p>
-                        {% endif %}
-                        <p class="form-card-meta">
-                            {% if form_info.reading_count > 0 %}
-                            {{ form_info.reading_count }} entr{{ 'y' if form_info.reading_count == 1 else 'ies' }}
-                            {% else %}
-                            &nbsp;
-                            {% endif %}
-                        </p>
-                    </div>
-                    <span class="status-badge form-card-status
-                        {% if form_info.status == 'submitted' %}status-submitted
-                        {% elif form_info.status == 'in_progress' %}status-in-progress
-                        {% elif form_info.status == 'edited_since_submit' %}status-edited
-                        {% else %}status-not-started{% endif %}">
-                        {% with status=form_info.status %}{% include "batches/_form_status.html" %}{% endwith %}
-                    </span>
-                </div>
-            {% if can_edit_forms %}</a>{% else %}</div>{% endif %}
-            {% endfor %}
+        <div class="reference-docs-empty">
+            <p class="berton-hint">No work order uploaded yet.{% if can_manage_documents %} Use Edit Run to upload one.{% endif %}</p>
         </div>
+        {% endif %}
+
+        {% if label_references %}
+        {% for doc in label_references %}
+        {% set label_title = 'Label Reference' ~ (' ' ~ loop.index if label_references|length > 1 else '') %}
+        {{ reference_pdf_viewer(doc, label_title, 'label-reference') }}
+        {% endfor %}
+        {% elif role == 'operator' %}
+        <div class="reference-docs-empty">
+            <p class="berton-hint">No label references uploaded for this run.</p>
+        </div>
+        {% endif %}
     </section>
 
-    {% if role == 'manager' and (current_compilation or stale_compilation or batch.status.value == 'reopened') %}
-    <section class="berton-card p-6">
-        <h2 class="section-title mb-4">Compiled Document</h2>
-        {% if current_compilation %}
-        <p class="mb-2">{{ current_compilation.output_filename }}</p>
-        <p class="berton-hint mb-4">Compiled {{ current_compilation.compiled_at.strftime('%d %b %Y at %H:%M') }}</p>
-        <a href="/api/compilations/{{ current_compilation.id }}/download" class="btn-primary">Download PDF</a>
+    <div id="batch-forms" class="batch-detail-body space-y-8">
+        <section>
+            <h2 class="section-title mb-2">Forms</h2>
+            <p class="text-muted mb-4">
+                {% if can_edit_forms %}
+                Select a form to enter or update data.
+                {% else %}
+                These forms are read-only.
+                {% endif %}
+            </p>
+
+            <div class="form-grid">
+                {% for form_type, form_info in form_status.items() %}
+                {% if can_edit_forms %}
+                <a href="/batches/{{ batch.id }}/forms/{{ form_type }}" class="form-card">
+                {% else %}
+                <div class="form-card form-card-locked">
+                {% endif %}
+                    <div class="form-card-inner">
+                        <div class="form-card-content">
+                            <h3 class="form-card-title">{{ form_info.label }}</h3>
+                            {% if form_info.doc_number %}
+                            <p class="form-card-doc">{{ form_info.doc_number }}</p>
+                            {% else %}
+                            <p class="form-card-doc form-card-doc--empty">&nbsp;</p>
+                            {% endif %}
+                            <p class="form-card-meta">
+                                {% if form_info.reading_count > 0 %}
+                                {{ form_info.reading_count }} entr{{ 'y' if form_info.reading_count == 1 else 'ies' }}
+                                {% else %}
+                                &nbsp;
+                                {% endif %}
+                            </p>
+                        </div>
+                        <span class="status-badge form-card-status
+                            {% if form_info.status == 'submitted' %}status-submitted
+                            {% elif form_info.status == 'in_progress' %}status-in-progress
+                            {% elif form_info.status == 'edited_since_submit' %}status-edited
+                            {% else %}status-not-started{% endif %}">
+                            {% with status=form_info.status %}{% include "batches/_form_status.html" %}{% endwith %}
+                        </span>
+                    </div>
+                {% if can_edit_forms %}</a>{% else %}</div>{% endif %}
+                {% endfor %}
+            </div>
+        </section>
+
+        {% if can_print_pallet_tags %}
+        <section class="berton-card p-6">
+            <h2 class="section-title mb-2">Pallet Tags</h2>
+            <p class="text-muted mb-4">
+                {% if pallet_calc.withheld %}
+                {{ pallet_calc.reason }}
+                {% else %}
+                Calculated pallets: <strong>{{ pallet_calc.pallets }}</strong>
+                ({{ pallet_calc.run_quantity }} cartons ÷ {{ pallet_calc.cartons_per_pallet }} per pallet).
+                {% endif %}
+                {% if tags_printed_total %} Printed to date: <strong>{{ tags_printed_total }}</strong>.{% endif %}
+            </p>
+            <a href="/batches/{{ batch.id }}/pallet-tags" class="btn-primary">Print Pallet Tags</a>
+        </section>
         {% endif %}
-        {% if stale_compilation and not current_compilation %}
-        <p class="berton-hint mb-4">Previous PDF is stale. Recompile from the completion page.</p>
+
+        {% if role == 'manager' %}
+        <section id="run-completion" class="berton-card p-6 run-completion-section">
+            <h2 class="section-title mb-2">Complete Run</h2>
+
+            {% if batch.status.value == 'complete' %}
+            <p class="text-muted mb-4">This run is finished. Download the compiled PDF or reopen the run to make changes.</p>
+            {% if current_compilation %}
+            <p class="mb-1 font-semibold">{{ current_compilation.output_filename }}</p>
+            <p class="berton-hint mb-4">Compiled {{ current_compilation.compiled_at.strftime('%d %b %Y at %H:%M') }}</p>
+            <div class="run-completion-actions">
+                <a href="/api/compilations/{{ current_compilation.id }}/download" class="btn-primary">Download Compiled PDF</a>
+                {% if can_reopen %}
+                <form action="/batches/{{ batch.id }}/reopen" method="POST">
+                    <button type="submit" class="btn-secondary">Reopen Run</button>
+                </form>
+                {% endif %}
+            </div>
+            {% elif stale_compilation %}
+            <p class="berton-hint mb-4">The previous compiled PDF is no longer current.</p>
+            {% if can_reopen %}
+            <form action="/batches/{{ batch.id }}/reopen" method="POST">
+                <button type="submit" class="btn-secondary">Reopen Run</button>
+            </form>
+            {% endif %}
+            {% endif %}
+
+            {% else %}
+            <p class="text-muted mb-4">
+                {% if batch.status.value == 'reopened' %}
+                Upload any extra documents and recompile the final PDF.
+                {% elif pending_forms %}
+                Upload the EzyWine listing and compile the final PDF when ready. Outstanding forms are included as-is in the compiled document.
+                {% else %}
+                All forms are submitted. Upload the EzyWine listing and any extra documents, then compile the final PDF.
+                {% endif %}
+                Compiling marks the run complete and locks it until a manager reopens it.
+            </p>
+            {% if pending_forms and batch.status.value != 'reopened' %}
+            <p class="berton-hint mb-2">{{ pending_forms|length }} form{{ 's' if pending_forms|length != 1 else '' }} not yet submitted:</p>
+            <ul class="run-completion-pending mb-4">
+                {% for form_label in pending_forms %}
+                <li>{{ form_label }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if current_compilation and batch.status.value == 'reopened' %}
+            <p class="berton-hint mb-4">Previous PDF: {{ current_compilation.output_filename }} (will be marked stale on recompile)</p>
+            {% endif %}
+            <div class="run-completion-actions">
+                <a href="/batches/{{ batch.id }}/complete" class="btn-primary btn-gold">
+                    {% if batch.status.value == 'reopened' %}Recompile Final PDF{% else %}Complete Run &amp; Compile PDF{% endif %}
+                </a>
+            </div>
+            {% endif %}
+        </section>
         {% endif %}
-        {% if can_reopen %}
-        <form action="/batches/{{ batch.id }}/reopen" method="POST" class="mt-4">
-            <button type="submit" class="btn-secondary">Reopen Run</button>
-        </form>
-        {% elif batch.status.value == 'reopened' %}
-        <a href="/batches/{{ batch.id }}/complete" class="btn-primary btn-gold mt-4 inline-block">Recompile Run</a>
-        {% endif %}
-    </section>
+    </div>
+
+    {% if role == 'operator' %}
+    <nav class="batch-detail-sticky-nav" aria-label="Run shortcuts">
+        <a href="#reference-docs" class="secondary">Work Order</a>
+        <a href="#batch-forms">Open Forms</a>
+    </nav>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/batch-nav-scroll.js" defer></script>
+<script type="module" src="/static/js/reference-pdf-viewer.js"></script>
 {% endblock %}

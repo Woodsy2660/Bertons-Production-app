@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Print Pallet Tags — Run {{ batch.run_number }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-8">
+    <div>
+        <a href="/batches/{{ batch.id }}" class="back-link">&larr; Back to Run</a>
+        <h1 class="text-2xl text-primary font-semibold mt-3">Print Pallet Tags</h1>
+        <p class="text-muted mt-2">Run {{ batch.run_number }}</p>
+    </div>
+
+    <div class="berton-card p-6 space-y-4">
+        <h2 class="section-title">Tag fields (from work order)</h2>
+        <dl class="grid grid-cols-1 md:grid-cols-2 gap-3 text-lg">
+            <div><dt class="text-muted">Run number</dt><dd class="font-semibold">{{ batch.run_number }}</dd></div>
+            <div><dt class="text-muted">Stock code</dt><dd class="font-semibold">{{ batch.header.stock_item if batch.header else '—' }}</dd></div>
+            <div><dt class="text-muted">Product</dt><dd class="font-semibold">{{ batch.header.product if batch.header else '—' }}</dd></div>
+            <div><dt class="text-muted">Size</dt><dd class="font-semibold">{{ size or '—' }}</dd></div>
+        </dl>
+    </div>
+
+    <div class="berton-card p-6 space-y-4 border-2 border-[var(--berton-primary)]">
+        <h2 class="section-title">Pallet calculation</h2>
+        {% if calc.withheld %}
+        <div class="berton-alert berton-alert-info">{{ calc.reason }}</div>
+        {% else %}
+        <dl class="grid grid-cols-1 md:grid-cols-3 gap-4 text-lg">
+            <div><dt class="text-muted">Run quantity (cartons)</dt><dd class="font-semibold text-xl">{{ calc.run_quantity }}</dd></div>
+            <div><dt class="text-muted">Cartons / pallet (P000)</dt><dd class="font-semibold text-xl">{{ calc.cartons_per_pallet }}</dd></div>
+            <div><dt class="text-muted">Pallets (ceil)</dt><dd class="font-semibold text-xl">{{ calc.pallets }}</dd></div>
+        </dl>
+        {% endif %}
+        <p class="berton-hint">Pallet Number and Pallet Quantity are left blank on each tag for handwriting.</p>
+    </div>
+
+    <form action="/batches/{{ batch.id }}/pallet-tags/print" method="POST" class="berton-card p-6 space-y-4">
+        <div>
+            <label for="tags_to_print" class="berton-label">Tags to print</label>
+            <input type="number" id="tags_to_print" name="tags_to_print" min="1" required
+                   class="berton-input w-40"
+                   value="{{ calc.pallets if calc.pallets is not none else 1 }}">
+            <p class="berton-hint mt-1">Defaults to calculated pallets; override for top-ups or reprints.</p>
+        </div>
+        <div>
+            <label for="note" class="berton-label">Note (optional)</label>
+            <input type="text" id="note" name="note" class="berton-input" placeholder="e.g. top-up, 2 extra">
+        </div>
+        <button type="submit" class="btn-primary">Generate &amp; Print Tags</button>
+    </form>
+
+    <div class="berton-card p-6">
+        <h2 class="section-title mb-3">Print history</h2>
+        <p class="berton-hint mb-3">Total tags printed: <strong>{{ tags_printed_total }}</strong>
+            {% if calc.pallets %} (calculated {{ calc.pallets }}){% endif %}
+        </p>
+        {% if print_history %}
+        <ul class="space-y-2">
+            {% for row in print_history %}
+            <li class="flex flex-wrap gap-3 items-center justify-between border-b border-[var(--berton-border)] pb-2">
+                <span>{{ row.printed_at.strftime('%d %b %Y %H:%M') }} — {{ row.tags_printed }} tag(s) by {{ row.printed_by }}</span>
+                <a href="/batches/{{ batch.id }}/pallet-tags/pdf/{{ row.id }}" class="text-primary hover:underline">View PDF</a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="berton-hint">No tags printed yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

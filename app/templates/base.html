@@ -4,19 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Berton Bottling{% endblock %}</title>
+    <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/img/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/css/berton.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        /* Match official Berton logo ink #231f20 */
+                        primary: '#231f20',
+                        muted: '#5c5c5c',
+                    },
+                    fontFamily: {
+                        sans: ['Poppins', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/berton.css?v=8">
     {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col {% block body_class %}{% endblock %}">
     <nav class="berton-nav">
-        <div class="max-w-6xl mx-auto px-4 py-4">
+        <div class="max-w-6xl mx-auto px-4 py-3">
             <div class="flex items-center justify-between flex-wrap gap-3">
-                <div class="flex items-center gap-3">
-                    <a href="/" class="brand text-white no-underline">Berton Vineyards</a>
+                <div class="flex items-center gap-3 min-w-0">
+                    <a href="/" class="nav-brand" aria-label="Berton Vineyards home">
+                        <img
+                            src="/static/img/berton-logo-white.svg"
+                            alt="Berton Fine Australian Wines"
+                            class="nav-logo"
+                            width="176"
+                            height="85"
+                        >
+                    </a>
                     <span class="subtitle hidden sm:inline">Bottling Production</span>
                 </div>
                 <div class="flex items-center gap-3">
@@ -32,14 +58,17 @@
         </div>
     </nav>
 
-    <main class="flex-1 max-w-6xl mx-auto px-4 py-8 w-full">
+    <main class="flex-1 {% block main_class %}max-w-6xl mx-auto{% endblock %} px-4 py-8 w-full">
         {% block content %}{% endblock %}
     </main>
 
+    {% block footer %}
     <footer class="berton-footer mt-auto">
         <div class="max-w-6xl mx-auto px-4 py-5 text-center">
             Berton Vineyards &mdash; Bottling Run Management
         </div>
     </footer>
+    {% endblock %}
+    {% block scripts %}{% endblock %}
 </body>
 </html>

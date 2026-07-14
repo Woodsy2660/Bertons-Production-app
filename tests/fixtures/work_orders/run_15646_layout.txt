@@ -1,0 +1,32 @@
+                            Packaging Run Work Order            10:46  05/06/26   
+
+  faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac  
+  bRun No./Ref.   : 15646                             Packaging Line : BERT    b  
+  bStock Item     : F22CSARESAI6                      Start      05/06/26  0:00b  
+  bStock Alias    : RESERVE                           Est. Finish          0:00b  
+  bDescription    : Reserve 2022 Cab Sauvignon AI     Hourly Rate    : 0       b  
+  b                                                   Est. Run Time  : 0.00 Hrsb  
+  bPacking Unit   : 6750  6 x 750ml Bottles           Run Quantity   : 1800    b  
+  bVessel/Batch   : Z302                              Min. Operators : 5       b  
+  bVolume/Alloc.  :        0                          Add. Operators : 0       b  
+  bRun Status     : Wine & Packaging ready            Tot. Operators : 5       b  
+  daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaae  
+  faaaaaaaaaaaahaaaaaaaaaaaaaaaaaaaaaaaaaaaaaahaaaahaaaaaaaaahaaaaaaaaahaaaaaaac  
+  bStock Item  bDescription                   bUnitb    Totalb    Usageb   Ref.b  
+  iaaaaaaaaaaaakaaaaaaaaaaaaaaaaaaaaaaaaaaaaaakaaaakaaaaaaaaakaaaaaaaaakaaaaaaaj  
+  bBTSPCLAG7AMBb3-027 Super Prem Ant Grn BVS  bTHOUb    10.80b         b       b  
+  b            b750ml F/G                      b    b         b         b       b  
+  bLBRESCSA22  bReserve Front Label            bTHOUb    10.80b         b       b
+  b            b750ml AI                       b    b         b         b       b  
+  bLBRESCSA22B bReserve Back Label             bTHOUb    10.80b         b       b  
+  bLOTHCS24    bOther Label 750ml              bTHOUb    10.80b         b       b  
+  bF22CSARESAI6bReserve 2022 Cab Sauvignon AI  bLTR b 13500.00b         b       b  
+  daaaaaaaaaaaagaaaaaaaaaaaaaaaaaaaaaaaaaaaaaagaaaagaaaaaaaaagaaaaaaaaagaaaaaaae  
+  faaaaaahaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaahaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac  
+  bDetailbName                                  bValue                         b  
+  iaaaaaakaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaakaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaj  
+  bP000  bPallet - Cartons/Pallet               b   84.0000                    b  
+  bP001  bPallet - Cartons/Layer                b21                            b  
+  bP005  bPallet - Type                         bLoscam                        b  
+  bP012  bPallet - Slip Sheet                   bYes                           b  
+  daaaaaagaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaagaaaaaaaaaaaaaaaaaaaaaaaaaaaaaae

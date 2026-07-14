@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+
+{% block title %}Work Order Parser - Dev Tools{% endblock %}
+
+{% block head %}
+<style>
+    .parser-dropzone {
+        border: 2px dashed var(--berton-border);
+        border-radius: 0.75rem;
+        padding: 2.5rem 1.5rem;
+        text-align: center;
+        background: #faf8f6;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .parser-dropzone.dragover {
+        border-color: var(--berton-primary);
+        background: #f5f5f5;
+    }
+    .parser-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .parser-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+    .parser-table th,
+    .parser-table td {
+        border: 1px solid var(--berton-border);
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        vertical-align: top;
+    }
+    .parser-table th {
+        background: #f7f7f7;
+        color: var(--berton-primary);
+    }
+    .parser-missing {
+        background: #fde8e8;
+    }
+    .parser-highlight {
+        background: #e8f5e9;
+        font-weight: 600;
+    }
+    .parser-label-row {
+        background: #fff8e1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div>
+        <a href="/" class="text-primary hover:underline">&larr; All Runs</a>
+        <h1 class="text-2xl text-primary font-semibold mt-3">Work Order Parser</h1>
+        <p class="text-muted mt-2">
+            Drop an EzyWine Packaging Run Work Order PDF to preview extracted fields.
+            No database writes.
+        </p>
+    </div>
+
+    <div id="parser-error" class="berton-alert berton-alert-error hidden"></div>
+    <div id="parser-image-banner" class="berton-alert berton-alert-info hidden"></div>
+
+    <div class="berton-card p-6">
+        <div id="parser-dropzone" class="parser-dropzone">
+            <p class="text-lg mb-3">Drop a work order PDF here, or click to choose a file</p>
+            <input type="file" id="parser-file-input" accept="application/pdf,.pdf" class="hidden">
+            <button type="button" id="parser-browse-btn" class="btn-secondary">Choose PDF</button>
+        </div>
+    </div>
+
+    <div id="parser-results" class="hidden space-y-6">
+        <div class="berton-card p-6 border-2 border-[var(--berton-primary)]">
+            <h2 class="text-lg text-primary font-semibold mb-4">Pallet feature inputs</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <div class="text-muted">Run Quantity</div>
+                    <div id="pallet-run-qty" class="font-semibold text-xl">—</div>
+                </div>
+                <div>
+                    <div class="text-muted">Cartons / Pallet (P000)</div>
+                    <div id="pallet-cartons" class="font-semibold text-xl">—</div>
+                </div>
+                <div>
+                    <div class="text-muted">Pallets (ceil)</div>
+                    <div id="pallet-count" class="font-semibold text-xl">—</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="berton-card p-6 overflow-x-auto">
+            <h2 class="text-lg text-primary font-semibold mb-4">Header fields</h2>
+            <table class="parser-table" id="header-table">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Label in PDF</th>
+                        <th>Value</th>
+                        <th>Source</th>
+                        <th>Found?</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="berton-card p-6 overflow-x-auto">
+            <h2 class="text-lg text-primary font-semibold mb-4">Detail codes</h2>
+            <table class="parser-table" id="detail-table">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="berton-card p-6 overflow-x-auto">
+            <h2 class="text-lg text-primary font-semibold mb-4">Stock items</h2>
+            <table class="parser-table" id="stock-table">
+                <thead>
+                    <tr>
+                        <th>Stock Item</th>
+                        <th>Description</th>
+                        <th>Unit</th>
+                        <th>Required</th>
+                        <th>Label?</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="parser-notes" class="berton-card p-6 hidden">
+            <h2 class="text-base text-primary font-semibold mb-2">Notes</h2>
+            <p id="parser-note-text" class="text-muted"></p>
+        </div>
+
+        <details class="berton-card p-6">
+            <summary class="text-base text-primary font-semibold cursor-pointer">Raw layout text</summary>
+            <pre id="parser-raw-text" class="parser-mono mt-4 p-4 bg-[#f8f8f8] rounded overflow-x-auto max-h-[32rem]"></pre>
+        </details>
+    </div>
+</div>
+
+<script>
+(function () {
+    const dropzone = document.getElementById('parser-dropzone');
+    const fileInput = document.getElementById('parser-file-input');
+    const browseBtn = document.getElementById('parser-browse-btn');
+    const results = document.getElementById('parser-results');
+    const errorBox = document.getElementById('parser-error');
+    const imageBanner = document.getElementById('parser-image-banner');
+
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.classList.remove('hidden');
+    }
+
+    function clearError() {
+        errorBox.classList.add('hidden');
+        errorBox.textContent = '';
+    }
+
+    function boolCell(found) {
+        return found ? 'Yes' : 'No';
+    }
+
+    function renderResults(data) {
+        clearError();
+        results.classList.remove('hidden');
+
+        const compatible = data.compatible || {};
+        const runQty = compatible.run_quantity;
+        const cartons = compatible.cartons_per_pallet;
+        const palletCount = data.pallet_count;
+
+        document.getElementById('pallet-run-qty').textContent = runQty ?? '—';
+        document.getElementById('pallet-cartons').textContent = cartons ?? '—';
+        document.getElementById('pallet-count').textContent = palletCount ?? '—';
+
+        if (data.parse_note && data.parse_note.includes('image-based')) {
+            imageBanner.textContent = data.parse_note;
+            imageBanner.classList.remove('hidden');
+        } else {
+            imageBanner.classList.add('hidden');
+        }
+
+        const headerBody = document.querySelector('#header-table tbody');
+        headerBody.innerHTML = '';
+        (data.fields || [])
+            .filter((field) => field.source === 'header')
+            .forEach((field) => {
+                const row = document.createElement('tr');
+                if (!field.found) row.classList.add('parser-missing');
+                row.innerHTML = `
+                    <td>${field.key}</td>
+                    <td>${field.label}</td>
+                    <td>${field.value ?? ''}</td>
+                    <td>${field.source}${field.anchor ? ' / ' + field.anchor : ''}</td>
+                    <td>${boolCell(field.found)}</td>
+                `;
+                headerBody.appendChild(row);
+            });
+
+        const detailBody = document.querySelector('#detail-table tbody');
+        detailBody.innerHTML = '';
+        const detailNames = {};
+        (data.fields || [])
+            .filter((field) => (field.source || '').startsWith('detail'))
+            .forEach((field) => {
+                if (field.anchor) detailNames[field.anchor] = field.label;
+            });
+        Object.entries(data.details || {}).forEach(([code, value]) => {
+            const row = document.createElement('tr');
+            if (code === 'P000') row.classList.add('parser-highlight');
+            row.innerHTML = `
+                <td>${code}</td>
+                <td>${detailNames[code] || ''}</td>
+                <td>${value}</td>
+            `;
+            detailBody.appendChild(row);
+        });
+
+        const stockBody = document.querySelector('#stock-table tbody');
+        stockBody.innerHTML = '';
+        (data.stock_table_lines || []).forEach((line) => {
+            const row = document.createElement('tr');
+            if (line.is_label) row.classList.add('parser-label-row');
+            row.innerHTML = `
+                <td>${line.code}</td>
+                <td>${line.description || ''}</td>
+                <td>${line.unit || ''}</td>
+                <td>${line.required_total ?? ''}</td>
+                <td>${line.is_label ? 'Yes' : 'No'}</td>
+            `;
+            stockBody.appendChild(row);
+        });
+
+        const notes = document.getElementById('parser-notes');
+        const noteText = document.getElementById('parser-note-text');
+        if (data.parse_note) {
+            noteText.textContent = data.parse_note;
+            notes.classList.remove('hidden');
+        } else {
+            notes.classList.add('hidden');
+            noteText.textContent = '';
+        }
+
+        document.getElementById('parser-raw-text').textContent = data.raw_layout_text || '';
+    }
+
+    async function parseFile(file) {
+        if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+            showError('Please choose a PDF work order file.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('work_order', file);
+
+        try {
+            const response = await fetch('/dev/work-order-parser/parse', {
+                method: 'POST',
+                body: formData,
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || ('HTTP ' + response.status));
+            }
+            const data = await response.json();
+            renderResults(data);
+        } catch (err) {
+            showError('Parse failed: ' + err.message);
+        }
+    }
+
+    browseBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) parseFile(fileInput.files[0]);
+    });
+
+    dropzone.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (event.dataTransfer.files.length) {
+            parseFile(event.dataTransfer.files[0]);
+        }
+    });
+})();
+</script>
+{% endblock %}

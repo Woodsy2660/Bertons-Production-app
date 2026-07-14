@@ -62,3 +62,27 @@ htmlcov/
 # Build artifacts
 *.pyc
 *.pyo
+
+# Terminal logs (Claude Code session logs)
+terminals/
+
+# Compiled output
+compiled_output/*
+!compiled_output/.gitkeep
+
+# Pallet tags output
+pallet_tags/*
+!pallet_tags/.gitkeep
+
+# Test/example PDFs in root
+/*.pdf
+/*.PDF
+
+# Temporary files
+cookies.txt
+_pbo04_layout.txt
+*.jpg
+
+# macOS metadata
+__MACOSX/
+.DS_Store

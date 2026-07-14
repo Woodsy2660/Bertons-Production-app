@@ -5,6 +5,30 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
+def normalize_database_url(url: str) -> str:
+    """Convert Vercel/Neon postgres:// URLs for SQLAlchemy + asyncpg."""
+    normalized = url.strip()
+    if normalized.startswith("postgres://"):
+        normalized = "postgresql+asyncpg://" + normalized[len("postgres://") :]
+    elif normalized.startswith("postgresql://") and "+asyncpg" not in normalized:
+        normalized = "postgresql+asyncpg://" + normalized[len("postgresql://") :]
+    return normalized
+
+
+def resolve_database_url_from_env() -> str | None:
+    """Pick up DATABASE_URL or Vercel/Neon Postgres integration vars."""
+    for key in (
+        "DATABASE_URL",
+        "POSTGRES_URL",
+        "POSTGRES_URL_NON_POOLING",
+        "POSTGRES_PRISMA_URL",
+    ):
+        value = os.getenv(key)
+        if value:
+            return normalize_database_url(value)
+    return None
+
+
 def blob_configured() -> bool:
     return bool(
         os.getenv("BLOB_READ_WRITE_TOKEN")
@@ -38,12 +62,23 @@ class Settings(BaseSettings):
     operator_completed_run_days: int = 7
     operator_completed_run_limit: int = 10
 
+    enable_dev_tools: bool = False
+
+    pallet_tags_per_sheet: int = 1
+    pallet_tag_dispatch: str = "browser"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
 
     @model_validator(mode="after")
     def apply_deployment_defaults(self) -> "Settings":
+        resolved = resolve_database_url_from_env()
+        if resolved:
+            self.database_url = resolved
+        elif not self.database_url.startswith("postgresql+asyncpg://"):
+            self.database_url = normalize_database_url(self.database_url)
+
         if os.getenv("VERCEL"):
             if self.upload_dir in {"./uploads", "uploads"}:
                 self.upload_dir = "/tmp/uploads"

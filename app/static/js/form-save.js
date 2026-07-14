@@ -202,8 +202,13 @@
     }
 
     function updateCompletePanel(count) {
-        const completePanel = document.getElementById("form-complete-panel");
-        if (completePanel) completePanel.hidden = count === 0;
+        const hint = document.getElementById("form-complete-hint");
+        const form = document.getElementById("form-complete-form");
+        const submitBtn = form?.querySelector('[type="submit"]');
+        const hasEntries = count > 0;
+
+        if (hint) hint.hidden = hasEntries;
+        if (submitBtn) submitBtn.disabled = !hasEntries;
     }
 
     function trimPreviewRows(tbody, previewLimit) {
@@ -341,6 +346,9 @@
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
 
+            const submitBtn = form.querySelector('[type="submit"]');
+            if (submitBtn?.disabled) return;
+
             setStatus(bar, "saving", "Marking form complete…");
 
             try {
@@ -363,7 +371,7 @@
             event.preventDefault();
             const body = { ...formToObject(form), action: "submit" };
 
-            setStatus(bar, "saving", "Submitting form…");
+            setStatus(bar, "saving", "Marking form complete…");
             try {
                 const result = await postJson(
                     `/api/batches/${batchId}/forms/${formType}/draft`,

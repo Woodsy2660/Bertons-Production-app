@@ -1,0 +1,16 @@
+{# TODO: match exact EzyWine pallet-tag layout once sample (08 D20) is confirmed. #}
+{% for tag in tags %}
+<div class="tag-page">
+    <div class="tag-title">Pallet Tag</div>
+    <table class="tag-grid">
+        <tr><th>Run Number</th><td>{{ tag.run_number }}</td></tr>
+        <tr><th>Stock Code</th><td>{{ tag.stock_code }}</td></tr>
+        <tr><th>Product</th><td>{{ tag.product }}</td></tr>
+        <tr><th>Size</th><td>{{ tag.size }}</td></tr>
+        <tr><th>Date</th><td>{{ tag.print_date }}</td></tr>
+        <tr><th>Time</th><td>{{ tag.print_time }}</td></tr>
+        <tr><th>Pallet Quantity</th><td class="blank-field">&nbsp;</td></tr>
+        <tr><th>Pallet Number</th><td class="blank-field">&nbsp;</td></tr>
+    </table>
+</div>
+{% endfor %}

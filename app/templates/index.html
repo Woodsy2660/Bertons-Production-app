@@ -27,7 +27,7 @@
                 {% if role == 'manager' %}
                 Active production, review queue, and completed runs.
                 {% else %}
-                Today's runs and recently completed batches.
+                Active production runs and recently completed batches.
                 {% endif %}
             </p>
         </div>
@@ -81,7 +81,7 @@
             {% if role == 'manager' %}
             Upload a work order to start a bottling run.
             {% else %}
-            No runs scheduled for today.
+            No active or recent runs to show.
             {% endif %}
         </p>
         {% if role == 'manager' %}

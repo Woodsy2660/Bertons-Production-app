@@ -4,6 +4,7 @@ from app.models.reading import Reading
 from app.models.uploaded_document import UploadedDocument, DocumentSlot
 from app.models.compilation import Compilation
 from app.models.operator import Operator
+from app.models.pallet_tag_print import PalletTagPrint
 
 __all__ = [
     "Batch",
@@ -18,4 +19,5 @@ __all__ = [
     "DocumentSlot",
     "Compilation",
     "Operator",
+    "PalletTagPrint",
 ]

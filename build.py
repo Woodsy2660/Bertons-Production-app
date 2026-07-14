@@ -8,8 +8,13 @@ import sys
 
 
 def main() -> None:
-    if not os.getenv("DATABASE_URL"):
-        print("DATABASE_URL not set; skipping Alembic migrations.")
+    from app.config import resolve_database_url_from_env
+
+    if not resolve_database_url_from_env():
+        print(
+            "No database URL found (DATABASE_URL / POSTGRES_URL); "
+            "skipping Alembic migrations."
+        )
         return
 
     print("Running Alembic migrations...")

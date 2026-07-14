@@ -67,9 +67,14 @@ def can_upload_documents(batch: Batch, role: Role) -> bool:
 
 
 def can_compile(batch: Batch, role: Role) -> bool:
+    """Managers may compile any active run, including partially completed forms."""
     if role != "manager":
         return False
-    return batch.status in (BatchStatus.AWAITING_REVIEW, BatchStatus.REOPENED)
+    return batch.status in (
+        BatchStatus.IN_PROGRESS,
+        BatchStatus.AWAITING_REVIEW,
+        BatchStatus.REOPENED,
+    )
 
 
 def can_mark_ready(batch: Batch, role: Role) -> bool:
@@ -166,26 +171,23 @@ async def reopen_run(db: AsyncSession, batch: Batch) -> None:
 
 
 def operator_visibility_filter(settings: Settings, today: date | None = None):
-    """SQLAlchemy filter for operator run list scoping."""
+    """SQLAlchemy filter for operator run list scoping.
+
+    Active (non-complete) runs are not date-scoped so the operator dashboard stays
+    in sync with the manager view. Completed runs remain limited to a recent window.
+    """
     today = today or date.today()
     cutoff = today - timedelta(days=settings.operator_completed_run_days)
+    cutoff_dt = datetime.combine(cutoff, datetime.min.time())
 
     return or_(
-        and_(
-            Batch.status != BatchStatus.COMPLETE,
-            BatchHeader.run_date == today,
-        ),
+        Batch.status != BatchStatus.COMPLETE,
         and_(
             Batch.status == BatchStatus.COMPLETE,
             or_(
                 BatchHeader.run_date >= cutoff,
-                Batch.updated_at >= datetime.combine(cutoff, datetime.min.time()),
+                Batch.updated_at >= cutoff_dt,
             ),
-        ),
-        and_(
-            Batch.status != BatchStatus.COMPLETE,
-            BatchHeader.run_date.is_(None),
-            Batch.created_at >= datetime.combine(today, datetime.min.time()),
         ),
     )
 
@@ -199,7 +201,7 @@ async def list_batches_for_role(
     Return (all_batches, review_queue) for dashboard.
 
     Managers see all runs; review_queue is awaiting_review only.
-    Operators see today's runs plus recent complete runs.
+    Operators see all active runs plus recent complete runs.
     """
     base = (
         select(Batch)

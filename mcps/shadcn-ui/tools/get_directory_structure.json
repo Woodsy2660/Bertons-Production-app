@@ -1,0 +1,25 @@
+{
+  "name": "get_directory_structure",
+  "description": "Get the directory structure of the shadcn-ui v4 repository",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path within the repository (default: v4 registry)"
+      },
+      "owner": {
+        "type": "string",
+        "description": "Repository owner (default: \"shadcn-ui\")"
+      },
+      "repo": {
+        "type": "string",
+        "description": "Repository name (default: \"ui\")"
+      },
+      "branch": {
+        "type": "string",
+        "description": "Branch name (default: \"main\")"
+      }
+    }
+  }
+}

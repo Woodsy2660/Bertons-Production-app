@@ -11,7 +11,13 @@
       "Bash(python3:*)",
       "Bash(lsof:*)",
       "Bash(ss:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "mcp__magic__21st_magic_component_inspiration",
+      "WebFetch(domain:www.bertonvineyards.com.au)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(xargs:*)"
     ]
   }
 }
