@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+.venv
+venv
+.eggs
+*.egg-info
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment files (loaded at runtime, not baked in)
+.env
+.env.local
+.env.*.local
+
+# Local data directories (mounted as volumes)
+uploads/
+compiled_output/
+pallet_tags/
+*.db
+*.sqlite3
+
+# Documentation and dev files
+Documentation/
+*.md
+tests/
+agent-tools/
+mcps/
+
+# Build artifacts
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+__MACOSX/
+
+# Misc
+*.log
+logs/
+terminals/
