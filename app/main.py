@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, Response, JSONResponse
+from fastapi.responses import RedirectResponse, Response, JSONResponse, FileResponse, StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +65,7 @@ from app.services.form_persistence import (
     save_form_header as persist_form_header,
     submit_accrual_form,
 )
-from app.services.storage import build_upload_path, read_bytes, save_bytes
+from app.services.storage import build_upload_path, read_bytes, save_bytes, is_remote_path
 from app.services.form_prefill import build_form_context, extract_packing_size
 from app.services.pallet_tags import calculate_pallets, record_pallet_tag_print, total_tags_printed
 from app.services.work_order_extraction import populate_header_from_work_order_pdf
@@ -752,6 +752,7 @@ async def pallet_tags_pdf(
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
+    """Serve pallet tag PDF with Range request support for iOS Safari."""
     result = await db.execute(
         select(PalletTagPrint)
         .where(PalletTagPrint.id == print_id)
@@ -760,11 +761,26 @@ async def pallet_tags_pdf(
     print_row = result.scalar_one_or_none()
     if not print_row or not print_row.stored_path:
         raise HTTPException(status_code=404, detail="Tag PDF not found")
+
+    # Use FileResponse for local files (handles Range requests automatically)
+    if not is_remote_path(print_row.stored_path):
+        return FileResponse(
+            path=print_row.stored_path,
+            media_type="application/pdf",
+            filename="pallet_tags.pdf",
+            content_disposition_type="inline",
+        )
+
+    # Fallback for remote files
     content = await read_bytes(print_row.stored_path)
     return Response(
         content=content,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'inline; filename="pallet_tags.pdf"'},
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(len(content)),
+            "Content-Disposition": 'inline; filename="pallet_tags.pdf"',
+        },
     )
 
 
@@ -1373,10 +1389,15 @@ async def reopen_batch_route(
 
 @app.get("/uploads/{doc_id}/view")
 async def view_upload(
+    request: Request,
     doc_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """View an uploaded PDF inline (for embedding in the page)."""
+    """View an uploaded PDF inline (for embedding in the page).
+
+    Supports HTTP Range requests for iOS Safari compatibility.
+    iOS Safari requires 206 Partial Content responses for PDF viewing.
+    """
     result = await db.execute(
         select(UploadedDocument).where(UploadedDocument.id == doc_id)
     )
@@ -1384,11 +1405,64 @@ async def view_upload(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    # For local files, use FileResponse which handles Range requests automatically
+    if not is_remote_path(doc.stored_path):
+        return FileResponse(
+            path=doc.stored_path,
+            media_type="application/pdf",
+            filename=doc.original_filename,
+            content_disposition_type="inline",
+        )
+
+    # For remote files (Vercel Blob), fetch and serve with Range support
     content = await read_bytes(doc.stored_path)
+    file_size = len(content)
+
+    range_header = request.headers.get("range")
+    if range_header:
+        # Parse Range header: "bytes=start-end"
+        try:
+            range_spec = range_header.replace("bytes=", "")
+            if "-" in range_spec:
+                parts = range_spec.split("-")
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else file_size - 1
+            else:
+                start = int(range_spec)
+                end = file_size - 1
+
+            # Clamp to valid range
+            start = max(0, start)
+            end = min(end, file_size - 1)
+
+            if start > end or start >= file_size:
+                raise HTTPException(status_code=416, detail="Range Not Satisfiable")
+
+            chunk = content[start:end + 1]
+            return Response(
+                content=chunk,
+                status_code=206,
+                media_type="application/pdf",
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(chunk)),
+                    "Content-Disposition": f'inline; filename="{doc.original_filename}"',
+                },
+            )
+        except (ValueError, IndexError):
+            # Invalid range, fall through to full response
+            pass
+
+    # No Range header or invalid range: return full content
     return Response(
         content=content,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Disposition": f'inline; filename="{doc.original_filename}"',
+        },
     )
 
 
