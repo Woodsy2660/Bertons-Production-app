@@ -17,7 +17,8 @@
       "Bash(grep:*)",
       "Bash(ls:*)",
       "Bash(wc:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(uv lock:*)"
     ]
   }
 }

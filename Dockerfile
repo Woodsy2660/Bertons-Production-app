@@ -36,8 +36,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies using frozen lockfile (reproducible builds)
-# Include the pdf optional dependencies for weasyprint
-RUN uv sync --frozen --no-dev --extra pdf
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY alembic.ini ./
