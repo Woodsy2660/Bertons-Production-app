@@ -42,12 +42,21 @@
     --berton-gold-dark: var(--berton-accent-dark);
 }
 
+html {
+    /* Prevent horizontal overflow at the root level */
+    overflow-x: hidden;
+}
+
 body {
     font-family: 'Poppins', system-ui, -apple-system, sans-serif !important;
     font-size: 18px !important;
     line-height: 1.5;
     color: var(--berton-text) !important;
     background-color: var(--berton-bg) !important;
+    /* Prevent horizontal overflow — content must fit viewport */
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
 }
 
 h1, h2, h3, .font-display {
@@ -232,6 +241,7 @@ button.touch-target {
 /* Form inputs - clean modern style — 48px min height for touch */
 .berton-input {
     width: 100%;
+    max-width: 100%;
     font-size: 1rem;
     padding: 0.875rem 1rem;
     min-height: 48px;
@@ -1337,11 +1347,14 @@ body.pdf-standalone-page .reference-pdf-status {
     flex-wrap: wrap;
     gap: 0.5rem;
     align-items: stretch;
+    max-width: 100%;
 }
 
 .barcode-field-row .berton-input {
-    flex: 1 1 60%;
-    min-width: 0;
+    /* Allow input to shrink, take available space, wrap before overflow */
+    flex: 1 1 auto;
+    min-width: min(200px, 100%);
+    max-width: 100%;
 }
 
 /* Barcode scan buttons — 48px minimum touch targets */
@@ -1362,7 +1375,8 @@ body.pdf-standalone-page .reference-pdf-status {
     white-space: nowrap;
     cursor: pointer;
     box-sizing: border-box;
-    flex-shrink: 0;
+    /* Allow button to wrap to new line if row is too narrow */
+    flex-shrink: 1;
 }
 
 .barcode-scan-btn:hover {
@@ -1730,15 +1744,34 @@ body.barcode-camera-open {
     /* Prevent horizontal scroll from oversized elements */
     main {
         overflow-x: hidden;
+        max-width: 100%;
+    }
+
+    /* Ensure all content respects viewport with gutters */
+    .berton-nav > div,
+    .berton-footer > div,
+    main {
+        padding-left: 1rem;
+        padding-right: 1rem;
+        box-sizing: border-box;
     }
 
     /* Barcode buttons stack on very narrow views */
     .barcode-field-row {
         flex-wrap: wrap;
+        max-width: 100%;
     }
 
     /* Reference PDF section respects viewport */
     .reference-pdf-page-shell {
         max-width: calc(100vw - 2rem);
+    }
+
+    /* Ensure forms don't overflow */
+    form,
+    .barcode-field,
+    .berton-card {
+        max-width: 100%;
+        box-sizing: border-box;
     }
 }
