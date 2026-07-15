@@ -44,7 +44,7 @@
 
 body {
     font-family: 'Poppins', system-ui, -apple-system, sans-serif !important;
-    font-size: 15px !important;
+    font-size: 18px !important;
     line-height: 1.5;
     color: var(--berton-text) !important;
     background-color: var(--berton-bg) !important;
@@ -62,10 +62,34 @@ h1, h2, h3, .font-display {
 .text-muted { color: var(--berton-text-muted) !important; }
 .bg-subtle { background-color: var(--berton-bg-subtle) !important; }
 
-/* Touch-friendly targets for tablets */
+/* Touch-friendly targets for tablets — minimum 48px, 56px for primary controls */
 .touch-target {
     min-height: 48px;
     min-width: 48px;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+/* Ensure buttons styled as touch targets look correct */
+button.touch-target {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* Primary touch targets (main actions) — 56px minimum */
+.touch-target-primary {
+    min-height: 56px;
+    min-width: 56px;
+    padding: 1rem 1.5rem;
+    font-size: 1.1rem;
+    box-sizing: border-box;
 }
 
 /* Navigation — reverse of logo (white mark on brand black) */
@@ -137,6 +161,7 @@ h1, h2, h3, .font-display {
 }
 
 /* Buttons — brand ink (logo #231f20) */
+/* Primary buttons are floor-critical — 56px min height for reliable tapping */
 .btn-primary {
     display: inline-flex;
     align-items: center;
@@ -144,14 +169,16 @@ h1, h2, h3, .font-display {
     gap: 0.5rem;
     background-color: var(--berton-ink);
     color: white;
-    font-size: 0.9rem;
+    font-size: 1.1rem;
     font-weight: 600;
-    padding: 0.75rem 1.5rem;
-    border-radius: 5px;
+    padding: 1rem 1.75rem;
+    min-height: 56px;
+    border-radius: 6px;
     border: none;
     cursor: pointer;
     transition: background-color 0.2s, transform 0.1s;
     text-decoration: none;
+    box-sizing: border-box;
 }
 
 .btn-primary:hover {
@@ -167,7 +194,7 @@ h1, h2, h3, .font-display {
     cursor: not-allowed;
 }
 
-/* Secondary button - outline style */
+/* Secondary button - outline style — 48px min height */
 .btn-secondary {
     display: inline-flex;
     align-items: center;
@@ -175,14 +202,16 @@ h1, h2, h3, .font-display {
     gap: 0.5rem;
     background-color: white;
     color: var(--berton-primary);
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-weight: 600;
-    padding: 0.7rem 1.4rem;
-    border-radius: 5px;
+    padding: 0.875rem 1.5rem;
+    min-height: 48px;
+    border-radius: 6px;
     border: 2px solid var(--berton-primary);
     cursor: pointer;
     transition: all 0.2s;
     text-decoration: none;
+    box-sizing: border-box;
 }
 
 .btn-secondary:hover {
@@ -200,16 +229,29 @@ h1, h2, h3, .font-display {
     background-color: var(--berton-primary-light);
 }
 
-/* Form inputs - clean modern style */
+/* Form inputs - clean modern style — 48px min height for touch */
 .berton-input {
     width: 100%;
-    font-size: 0.95rem;
-    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    padding: 0.875rem 1rem;
+    min-height: 48px;
     border: 1px solid var(--berton-border);
-    border-radius: 5px;
+    border-radius: 6px;
     background: white;
     color: var(--berton-text);
     transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+/* Select dropdowns need explicit height on mobile/tablet */
+select.berton-input {
+    min-height: 48px;
+    padding-right: 2.5rem;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
 }
 
 .berton-input:focus {
@@ -396,21 +438,23 @@ h1, h2, h3, .font-display {
     font-size: 0.95rem;
 }
 
+/* Run cards grid — larger minimum for tablets, fills width appropriately */
 .run-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 1rem;
 }
 
+/* Run cards — touch-friendly sizing */
 .run-card {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    padding: 1rem 1.25rem;
-    min-height: 5.5rem;
+    padding: 1.25rem 1.5rem;
+    min-height: 6rem;
     box-sizing: border-box;
     border: 1px solid var(--berton-border);
-    border-radius: 5px;
+    border-radius: 6px;
     background: white;
     text-decoration: none;
     color: inherit;
@@ -513,10 +557,11 @@ h1, h2, h3, .font-display {
     gap: 0.85rem;
 }
 
+/* Form cards — generous touch targets */
 .form-card {
     display: block;
-    min-height: 5.5rem;
-    padding: 1.15rem 1.35rem;
+    min-height: 6rem;
+    padding: 1.25rem 1.5rem;
     box-sizing: border-box;
     border: 1px solid var(--berton-border);
     border-radius: 6px;
@@ -808,12 +853,32 @@ h1, h2, h3, .font-display {
     display: none;
 }
 
+/* Fallback link always visible for iOS Safari compatibility */
 .reference-pdf-fallback-link {
     display: block;
-    margin: 0 auto 1rem;
+    margin: 1rem auto;
+    padding: 0.75rem 1.5rem;
     width: fit-content;
-    color: var(--berton-burgundy);
+    min-height: 48px;
+    background: var(--berton-bg-subtle);
+    border: 2px solid var(--berton-primary);
+    border-radius: 6px;
+    color: var(--berton-primary);
     font-weight: 600;
+    font-size: 1rem;
+    text-decoration: none;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.reference-pdf-fallback-link:hover {
+    background: var(--berton-primary);
+    color: white;
+}
+
+/* Hide fallback link once PDF renders successfully */
+.reference-pdf-viewer--ready .reference-pdf-fallback-link {
+    display: none;
 }
 
 .reference-pdf-pages {
@@ -884,6 +949,7 @@ body.operator-run-view main {
     padding-bottom: 5rem;
 }
 
+/* Sticky bottom nav — 56px touch targets for floor use */
 .batch-detail-sticky-nav {
     position: fixed;
     left: 0;
@@ -892,28 +958,34 @@ body.operator-run-view main {
     z-index: 40;
     display: flex;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
     background: rgba(0, 0, 0, 0.95);
     box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
 }
 
 .batch-detail-sticky-nav a {
     flex: 1;
-    max-width: 12rem;
+    max-width: 14rem;
     text-align: center;
     text-decoration: none;
     font-weight: 600;
-    font-size: 0.875rem;
-    padding: 0.75rem 1rem;
-    border-radius: 5px;
+    font-size: 1rem;
+    padding: 1rem 1.25rem;
+    min-height: 56px;
+    border-radius: 6px;
     color: #fff;
     background: var(--berton-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 .batch-detail-sticky-nav a.secondary {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.5);
     color: #fff;
 }
 
@@ -1259,30 +1331,38 @@ body.pdf-standalone-page .reference-pdf-status {
     gap: 0.35rem;
 }
 
+/* Barcode field row — responsive, wraps on narrow screens */
 .barcode-field-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: stretch;
 }
 
 .barcode-field-row .berton-input {
-    flex: 1;
+    flex: 1 1 60%;
     min-width: 0;
 }
 
+/* Barcode scan buttons — 48px minimum touch targets */
 .barcode-scan-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0 0.85rem;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem 1rem;
+    min-height: 48px;
+    min-width: 48px;
     border: 2px solid var(--berton-gold);
     border-radius: 6px;
     background: var(--berton-warm);
     color: var(--berton-burgundy);
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
+    box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .barcode-scan-btn:hover {
@@ -1595,4 +1675,70 @@ body.barcode-camera-open {
     color: #fff;
     font-size: 0.85rem;
     font-weight: 700;
+}
+
+/* ==========================================================================
+   TABLET RESPONSIVE — 600px to 1400px viewport range
+   Targets iPad, Galaxy Tab A9+, and similar tablets in portrait & landscape
+   ========================================================================== */
+
+/* Tablet portrait and up (600px+) */
+@media (min-width: 600px) {
+    /* Ensure content uses available width without excessive margins */
+    .max-w-6xl {
+        max-width: min(72rem, calc(100vw - 2rem));
+    }
+
+    /* Run cards fill better on tablets */
+    .run-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    }
+
+    /* Form card status badge aligned right */
+    .form-card-status {
+        min-width: 9rem;
+    }
+}
+
+/* Tablet landscape and larger screens (900px+) */
+@media (min-width: 900px) {
+    /* Can fit 2-3 run cards comfortably */
+    .run-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+        gap: 1.25rem;
+    }
+
+    /* Batch detail header can be more spacious */
+    .batch-detail-title-row {
+        gap: 1rem 1.5rem;
+    }
+
+    .batch-detail-run-title {
+        font-size: 1.75rem;
+    }
+}
+
+/* Large tablets in landscape / small desktops (1100px+) */
+@media (min-width: 1100px) {
+    .run-grid {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    }
+}
+
+/* Ensure no horizontal overflow on any tablet size */
+@media (max-width: 1024px) {
+    /* Prevent horizontal scroll from oversized elements */
+    main {
+        overflow-x: hidden;
+    }
+
+    /* Barcode buttons stack on very narrow views */
+    .barcode-field-row {
+        flex-wrap: wrap;
+    }
+
+    /* Reference PDF section respects viewport */
+    .reference-pdf-page-shell {
+        max-width: calc(100vw - 2rem);
+    }
 }

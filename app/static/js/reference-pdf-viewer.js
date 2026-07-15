@@ -202,15 +202,8 @@ async function mountViewer(viewer) {
         await rerenderAll();
     } catch (err) {
         console.error("Failed to load reference PDF", err);
-        setStatus(viewer, "error", "Could not load this PDF. Try Open full page.");
-        const fallback = viewer.dataset.fallbackUrl;
-        if (fallback) {
-            const link = viewer.querySelector(".reference-pdf-fallback-link");
-            if (link) {
-                link.href = fallback;
-                link.hidden = false;
-            }
-        }
+        setStatus(viewer, "error", "Could not load PDF preview — use the link below to open it.");
+        // Fallback link is always visible via CSS until PDF loads successfully
     }
 }
 

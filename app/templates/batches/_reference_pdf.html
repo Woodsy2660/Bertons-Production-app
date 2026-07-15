@@ -9,12 +9,12 @@
         </div>
         <div class="reference-doc-actions">
             <div class="reference-pdf-zoom-controls" aria-label="Zoom controls">
-                <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-out" title="Zoom out">−</button>
+                <button type="button" class="reference-pdf-zoom-btn touch-target" data-action="zoom-out" title="Zoom out">−</button>
                 <span class="reference-pdf-zoom-value">100%</span>
-                <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-in" title="Zoom in">+</button>
-                <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset" data-action="zoom-reset" title="Reset zoom">Fit</button>
+                <button type="button" class="reference-pdf-zoom-btn touch-target" data-action="zoom-in" title="Zoom in">+</button>
+                <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset touch-target" data-action="zoom-reset" title="Reset zoom">Fit</button>
             </div>
-            <a href="/uploads/{{ doc.id }}/page" target="_blank" rel="noopener" class="reference-doc-open">Open full page</a>
+            <a href="/uploads/{{ doc.id }}/page" target="_blank" rel="noopener" class="reference-doc-open touch-target">Open full page</a>
         </div>
     </div>
     <div
@@ -25,7 +25,8 @@
         data-initial-zoom="1"
     >
         <p class="reference-pdf-status">Loading document…</p>
-        <a class="reference-pdf-fallback-link" hidden target="_blank" rel="noopener">Open PDF in new tab</a>
+        {# Always-visible fallback for iOS Safari and error cases #}
+        <a class="reference-pdf-fallback-link" href="/uploads/{{ doc.id }}/page" target="_blank" rel="noopener">Open PDF in new tab</a>
         <div class="reference-pdf-pages"></div>
     </div>
 </div>
