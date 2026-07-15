@@ -18,7 +18,10 @@
       "Bash(ls:*)",
       "Bash(wc:*)",
       "Bash(xargs:*)",
-      "Bash(uv lock:*)"
+      "Bash(uv lock:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   }
 }
