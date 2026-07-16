@@ -961,8 +961,10 @@ select.berton-input {
     width: 100%;
     flex: 1;
     min-height: 60vh;
+    height: 70vh;
     border: none;
     background: #fff;
+    display: block;
 }
 
 .reference-pdf-native-fallback {
