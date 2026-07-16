@@ -21,7 +21,9 @@
       "Bash(uv lock:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "WebSearch",
+      "WebFetch(domain:cdnjs.cloudflare.com)"
     ]
   }
 }
