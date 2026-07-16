@@ -945,6 +945,53 @@ select.berton-input {
     min-height: 40vh;
 }
 
+/* Native iOS PDF viewer — uses <object> embed for iOS Safari compatibility */
+.reference-pdf-viewer--native {
+    background: #f5f5f5;
+}
+
+.reference-pdf-native-container {
+    width: 100%;
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.reference-pdf-native-embed {
+    width: 100%;
+    flex: 1;
+    min-height: 60vh;
+    border: none;
+    background: #fff;
+}
+
+.reference-pdf-native-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 60vh;
+    padding: 2rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--berton-primary);
+    text-decoration: none;
+    background: var(--berton-bg-subtle);
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+.reference-pdf-native-fallback:hover {
+    background: var(--berton-primary);
+    color: white;
+}
+
+/* Hide fallback link in native viewer once object loads successfully */
+.reference-pdf-viewer--native .reference-pdf-fallback-link {
+    display: none;
+}
+
 .reference-docs-upload,
 .reference-docs-empty {
     width: 100%;

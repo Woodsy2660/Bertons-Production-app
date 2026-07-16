@@ -1,6 +1,9 @@
-import * as pdfjsLib from "/static/vendor/pdfjs/pdf.min.mjs";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.mjs";
+/**
+ * Reference PDF Viewer
+ *
+ * Uses native browser PDF viewing for iOS Safari (which has excellent native support)
+ * and PDF.js for other browsers.
+ */
 
 const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.75;
@@ -8,10 +11,108 @@ const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.25;
 
 /**
+ * Detect iOS devices (iPhone, iPad, iPod)
+ * All iOS browsers use WebKit, so PDF.js has compatibility issues on all of them.
+ */
+function isIOSDevice() {
+    const ua = navigator.userAgent;
+    // Check for iPhone, iPad, iPod
+    if (/iPhone|iPad|iPod/.test(ua)) {
+        return true;
+    }
+    // iPad on iOS 13+ reports as Mac, but supports touch
+    if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Mount native PDF viewing for iOS devices using <object> element
+ */
+function mountNativeViewer(viewer) {
+    const url = viewer.dataset.pdfUrl;
+    const fallbackUrl = viewer.dataset.fallbackUrl || url;
+    const pagesHost = viewer.querySelector(".reference-pdf-pages");
+
+    if (!url || !pagesHost) {
+        return;
+    }
+
+    // Create native PDF embed using object element
+    const container = document.createElement("div");
+    container.className = "reference-pdf-native-container";
+
+    const objectEl = document.createElement("object");
+    objectEl.type = "application/pdf";
+    objectEl.data = url;
+    objectEl.className = "reference-pdf-native-embed";
+    objectEl.setAttribute("aria-label", "PDF document");
+
+    // Fallback content if object fails
+    const fallbackLink = document.createElement("a");
+    fallbackLink.href = fallbackUrl;
+    fallbackLink.target = "_blank";
+    fallbackLink.rel = "noopener";
+    fallbackLink.className = "reference-pdf-native-fallback";
+    fallbackLink.textContent = "Tap to open PDF";
+    objectEl.appendChild(fallbackLink);
+
+    container.appendChild(objectEl);
+    pagesHost.replaceChildren(container);
+
+    // Hide zoom controls for native viewer (iOS handles its own zoom)
+    const block = viewer.closest(".reference-doc-block");
+    const zoomControls = block?.querySelector(".reference-pdf-zoom-controls");
+    if (zoomControls) {
+        zoomControls.style.display = "none";
+    }
+
+    // Mark as ready
+    viewer.classList.remove("reference-pdf-viewer--loading");
+    viewer.classList.add("reference-pdf-viewer--ready", "reference-pdf-viewer--native");
+
+    const status = viewer.querySelector(".reference-pdf-status");
+    if (status) {
+        status.hidden = true;
+    }
+}
+
+// PDF.js implementation for non-iOS browsers
+let pdfjsLib = null;
+let pdfjsLoaded = false;
+let pdfjsLoadPromise = null;
+
+async function loadPdfJs() {
+    if (pdfjsLoaded) {
+        return pdfjsLib;
+    }
+    if (pdfjsLoadPromise) {
+        return pdfjsLoadPromise;
+    }
+
+    pdfjsLoadPromise = (async () => {
+        try {
+            const module = await import("/static/vendor/pdfjs/pdf.min.mjs");
+            pdfjsLib = module;
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.mjs";
+            pdfjsLoaded = true;
+            return pdfjsLib;
+        } catch (err) {
+            console.error("Failed to load PDF.js", err);
+            throw err;
+        }
+    })();
+
+    return pdfjsLoadPromise;
+}
+
+/**
  * @param {string | Uint8Array | ArrayBuffer} source
  * @param {object} [options]
  */
 async function loadPdfDocument(source, options = {}) {
+    const lib = await loadPdfJs();
     const taskOptions = { ...options };
     if (typeof source === "string") {
         taskOptions.url = source;
@@ -21,7 +122,7 @@ async function loadPdfDocument(source, options = {}) {
     } else {
         taskOptions.data = source;
     }
-    return pdfjsLib.getDocument(taskOptions).promise;
+    return lib.getDocument(taskOptions).promise;
 }
 
 function createPageShell(pageNumber) {
@@ -126,7 +227,7 @@ function updateZoomLabel(viewer, zoom) {
     }
 }
 
-async function mountViewer(viewer) {
+async function mountPdfjsViewer(viewer) {
     const url = viewer.dataset.pdfUrl;
     const pagesHost = viewer.querySelector(".reference-pdf-pages");
     if (!url || !pagesHost) {
@@ -203,7 +304,17 @@ async function mountViewer(viewer) {
     } catch (err) {
         console.error("Failed to load reference PDF", err);
         setStatus(viewer, "error", "Could not load PDF preview — use the link below to open it.");
-        // Fallback link is always visible via CSS until PDF loads successfully
+    }
+}
+
+/**
+ * Mount viewer - chooses native or PDF.js based on device
+ */
+async function mountViewer(viewer) {
+    if (isIOSDevice()) {
+        mountNativeViewer(viewer);
+    } else {
+        await mountPdfjsViewer(viewer);
     }
 }
 
