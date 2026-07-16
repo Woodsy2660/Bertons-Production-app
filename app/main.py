@@ -1397,6 +1397,8 @@ async def view_upload(
 
     Supports HTTP Range requests for iOS Safari compatibility.
     iOS Safari requires 206 Partial Content responses for PDF viewing.
+    FileResponse doesn't reliably handle Range in all Starlette versions,
+    so we implement it manually for both local and remote files.
     """
     result = await db.execute(
         select(UploadedDocument).where(UploadedDocument.id == doc_id)
@@ -1405,16 +1407,7 @@ async def view_upload(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # For local files, use FileResponse which handles Range requests automatically
-    if not is_remote_path(doc.stored_path):
-        return FileResponse(
-            path=doc.stored_path,
-            media_type="application/pdf",
-            filename=doc.original_filename,
-            content_disposition_type="inline",
-        )
-
-    # For remote files (Vercel Blob), fetch and serve with Range support
+    # Read file content (works for both local and remote files)
     content = await read_bytes(doc.stored_path)
     file_size = len(content)
 
@@ -1438,7 +1431,7 @@ async def view_upload(
             if start > end or start >= file_size:
                 raise HTTPException(status_code=416, detail="Range Not Satisfiable")
 
-            chunk = content[start:end + 1]
+            chunk = content[start : end + 1]
             return Response(
                 content=chunk,
                 status_code=206,
@@ -1454,7 +1447,7 @@ async def view_upload(
             # Invalid range, fall through to full response
             pass
 
-    # No Range header or invalid range: return full content
+    # No Range header or invalid range: return full content with Accept-Ranges
     return Response(
         content=content,
         media_type="application/pdf",
