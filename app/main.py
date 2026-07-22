@@ -1699,8 +1699,6 @@ async def view_upload(
 
     Supports HTTP Range requests for iOS Safari compatibility.
     iOS Safari requires 206 Partial Content responses for PDF viewing.
-    FileResponse doesn't reliably handle Range in all Starlette versions,
-    so we implement it manually for both local and remote files.
     """
     result = await db.execute(
         select(UploadedDocument).where(UploadedDocument.id == doc_id)
@@ -1719,37 +1717,59 @@ async def view_upload(
                 "Re-upload the document, or run: python scripts/restore_missing_uploads.py"
             ),
         ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not read PDF from storage: {exc}",
+        ) from exc
+
+    file_size = len(content)
+    disposition = f'inline; filename="{doc.original_filename}"'
+
+    range_header = request.headers.get("range")
+    if range_header:
+        # Parse Range header: "bytes=start-end"
+        try:
+            range_spec = range_header.replace("bytes=", "").strip()
+            if "-" in range_spec:
+                parts = range_spec.split("-", 1)
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else file_size - 1
+            else:
+                start = int(range_spec)
+                end = file_size - 1
+
+            start = max(0, start)
+            end = min(end, file_size - 1)
+
+            if start > end or start >= file_size:
+                raise HTTPException(status_code=416, detail="Range Not Satisfiable")
+
+            chunk = content[start : end + 1]
+            return Response(
+                content=chunk,
+                status_code=206,
+                media_type="application/pdf",
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(chunk)),
+                    "Content-Disposition": disposition,
+                },
+            )
+        except HTTPException:
+            raise
+        except (ValueError, IndexError):
+            # Invalid range — fall through to full response
+            pass
+
     return Response(
         content=content,
         media_type="application/pdf",
         headers={
             "Accept-Ranges": "bytes",
             "Content-Length": str(file_size),
-            "Content-Disposition": f'inline; filename="{doc.original_filename}"',
-        },
-    )
-
-
-@app.get("/uploads/{doc_id}/page")
-async def view_upload_page(
-    request: Request,
-    doc_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Standalone full-page PDF viewer (no app chrome)."""
-    result = await db.execute(
-        select(UploadedDocument).where(UploadedDocument.id == doc_id)
-    )
-    doc = result.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    return templates.TemplateResponse(
-        request,
-        "documents/standalone.html",
-        {
-            "doc": doc,
-            "title": doc.original_filename,
+            "Content-Disposition": disposition,
         },
     )
 
