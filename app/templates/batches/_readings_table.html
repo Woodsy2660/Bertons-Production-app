@@ -7,7 +7,7 @@
 {% endmacro %}
 
 {% macro reading_summary_cell(reading) %}
-<td class="px-3 py-2 text-[var(--berton-text-muted)]">
+<td class="px-3 py-2 text-muted">
     {% if reading.payload.get('carton_code') %}{{ reading.payload.carton_code }}{% endif %}
     {% if reading.payload.get('pallet_no') %}Pallet {{ reading.payload.pallet_no }}{% endif %}
     {% if reading.payload.get('high') %}High: {{ reading.payload.high }}{% endif %}
@@ -64,7 +64,7 @@
     {% else %}
     <tr class="readings-empty">
         <td colspan="{% if form_type in ['carton_qc', 'final_pallet_count'] %}{% if allow_delete %}6{% else %}5{% endif %}{% else %}{% if allow_delete %}5{% else %}4{% endif %}{% endif %}"
-            class="px-3 py-4 text-center text-[var(--berton-text-muted)]">
+            class="px-3 py-4 text-center text-muted">
             No entries yet — each reading saves immediately when added.
         </td>
     </tr>

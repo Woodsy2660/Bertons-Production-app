@@ -58,7 +58,7 @@ def _validate_field(field_def: FieldDef, value: Any) -> list[str]:
             errors.append(f"Field '{field_def.key}' is required")
         return errors
 
-    # Multi-value field validation
+    # Multi-value field validation (fixed-count arrays e.g. fill height ×4)
     if field_def.multi_value_count is not None:
         if not isinstance(value, list):
             errors.append(
@@ -75,6 +75,20 @@ def _validate_field(field_def: FieldDef, value: Any) -> list[str]:
             for i, v in enumerate(value):
                 v_errors = _validate_single_value(field_def, v, index=i)
                 errors.extend(v_errors)
+        return errors
+
+    # Multi-select enum (e.g. Filters used — zero or more options)
+    if field_def.field_type == FieldType.ENUM and field_def.multi_select:
+        values = value if isinstance(value, list) else [value]
+        allowed = set(field_def.enum_values or [])
+        for i, v in enumerate(values):
+            if v is None or v == "":
+                continue
+            if allowed and str(v) not in allowed:
+                errors.append(
+                    f"Field '{field_def.key}' value '{v}' must be one of: "
+                    f"{', '.join(field_def.enum_values or [])}"
+                )
         return errors
 
     # Single value validation

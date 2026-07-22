@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Action button colour options — Berton</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #231f20;
+      --bg: #f4f4f4;
+      --card: #fff;
+      --border: #e6e6e6;
+      --muted: #5c5c5c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Poppins, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      padding: 1.5rem 1rem 3rem;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 0.35rem; }
+    h2.group {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 1.75rem 0 0.75rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .lead { color: var(--muted); font-size: 0.95rem; margin: 0 0 1.25rem; line-height: 1.5; }
+    .bar {
+      background: var(--ink);
+      color: #fff;
+      border-radius: 6px;
+      padding: 0.85rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .bar .mark {
+      width: 1.75rem; height: 1.75rem;
+      border: 2px solid #fff;
+      border-radius: 4px;
+      display: grid; place-items: center;
+      font-weight: 700; font-size: 0.85rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+    }
+    @media (min-width: 720px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    .option {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem 1.15rem;
+    }
+    .option.recommended {
+      border-color: var(--ink);
+      box-shadow: 0 0 0 1px var(--ink);
+    }
+    .option.current {
+      opacity: 0.92;
+      background: #fafafa;
+    }
+    .option-head {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.65rem;
+      margin-bottom: 0.4rem;
+    }
+    .option-head h3 { font-size: 0.98rem; margin: 0; font-weight: 600; }
+    .hex {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.75rem;
+      background: #f0f0f0;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+    }
+    .tag {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: var(--ink);
+      color: #fff;
+      padding: 0.18rem 0.4rem;
+      border-radius: 3px;
+    }
+    .tag.soft { background: #888; }
+    .why { color: var(--muted); font-size: 0.82rem; margin: 0 0 0.85rem; line-height: 1.4; }
+    .row {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      font: inherit; font-weight: 600; font-size: 0.85rem;
+      padding: 0.65rem 1.1rem;
+      border-radius: 5px;
+      border: none;
+      cursor: default;
+      color: #fff;
+      white-space: nowrap;
+    }
+    .btn.outline {
+      background: #fff;
+      color: var(--ink);
+      border: 2px solid var(--ink);
+    }
+    .swatch {
+      width: 2.15rem; height: 2.15rem;
+      border-radius: 6px;
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+    .swatch.dual {
+      background: linear-gradient(135deg, var(--c1) 50%, var(--c2) 50%);
+    }
+    footer.note {
+      margin-top: 1.75rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">
+      <span class="mark">B</span>
+      <span>Header stays black · only action buttons change</span>
+    </div>
+
+    <h1>More action button colours</h1>
+    <p class="lead">
+      Secondary stays outline black (Cancel). Primary CTAs (Add Entry, Mark Form Complete) get the accent.
+      Open on a tablet if you can — colours read differently under warehouse lighting.
+    </p>
+
+    <h2 class="group">Today (for reference)</h2>
+    <div class="grid">
+      <article class="option current">
+        <div class="option-head">
+          <div class="swatch" style="background:#231f20"></div>
+          <h3>Current · brand ink</h3>
+          <span class="hex">#231f20</span>
+          <span class="tag soft">Blends in</span>
+        </div>
+        <p class="why">Same black as logo, nav, and body text — CTAs don’t pull the eye.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#231f20">Add Entry</button>
+          <button class="btn" type="button" style="background:#231f20">Mark Form Complete</button>
+        </div>
+      </article>
+    </div>
+
+    <h2 class="group">Wine &amp; cellar (brand-adjacent)</h2>
+    <div class="grid">
+      <article class="option recommended">
+        <div class="option-head">
+          <div class="swatch" style="background:#6B2D3C"></div>
+          <h3>A · Wine burgundy</h3>
+          <span class="hex">#6B2D3C</span>
+          <span class="tag">Strong pick</span>
+        </div>
+        <p class="why">Classic cellar red. Serious, readable, clearly “Berton” without clashing with black logo.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#6B2D3C">Add Entry</button>
+          <button class="btn" type="button" style="background:#6B2D3C">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#8B1E3F"></div>
+          <h3>E · Cabernet red</h3>
+          <span class="hex">#8B1E3F</span>
+        </div>
+        <p class="why">Brighter than burgundy — more pop on white, still wine-coded. Slightly louder on floor tablets.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#8B1E3F">Add Entry</button>
+          <button class="btn" type="button" style="background:#8B1E3F">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#4A1942"></div>
+          <h3>F · Shiraz plum</h3>
+          <span class="hex">#4A1942</span>
+        </div>
+        <p class="why">Deep purple-plum. Premium and quiet; lower contrast than pure reds — elegant, not shouty.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#4A1942">Add Entry</button>
+          <button class="btn" type="button" style="background:#4A1942">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#5C3317"></div>
+          <h3>G · Barrel oak</h3>
+          <span class="hex">#5C3317</span>
+        </div>
+        <p class="why">Dark chocolate brown. Warm cellar vibe; quieter than reds. May feel closer to black under dim light.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#5C3317">Add Entry</button>
+          <button class="btn" type="button" style="background:#5C3317">Mark Form Complete</button>
+        </div>
+      </article>
+    </div>
+
+    <h2 class="group">Warm metal &amp; harvest</h2>
+    <div class="grid">
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#A67C52"></div>
+          <h3>B · Harvest brass</h3>
+          <span class="hex">#A67C52</span>
+        </div>
+        <p class="why">Soft gold-brass. Premium packaging feel; less “alert” than red.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#A67C52">Add Entry</button>
+          <button class="btn" type="button" style="background:#A67C52">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#C4A35A"></div>
+          <h3>H · Champagne gold</h3>
+          <span class="hex">#C4A35A</span>
+        </div>
+        <p class="why">Lighter gold. Airy and premium; check contrast of white label text on the button (OK for large type).</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#C4A35A; color:#231f20">Add Entry</button>
+          <button class="btn" type="button" style="background:#C4A35A; color:#231f20">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#C45C26"></div>
+          <h3>D · Burnt orange</h3>
+          <span class="hex">#C45C26</span>
+        </div>
+        <p class="why">High visibility on the floor. Least “luxury logo”, best “can’t miss it”.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#C45C26">Add Entry</button>
+          <button class="btn" type="button" style="background:#C45C26">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#B45309"></div>
+          <h3>I · Amber reserve</h3>
+          <span class="hex">#B45309</span>
+        </div>
+        <p class="why">Deep amber/honey. Between orange pop and brass calm — good for “important but not alarm”.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#B45309">Add Entry</button>
+          <button class="btn" type="button" style="background:#B45309">Mark Form Complete</button>
+        </div>
+      </article>
+    </div>
+
+    <h2 class="group">Vineyard &amp; status greens</h2>
+    <div class="grid">
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#1F6B5A"></div>
+          <h3>C · Vineyard green</h3>
+          <span class="hex">#1F6B5A</span>
+        </div>
+        <p class="why">Teal-green “go”. Aligns with submitted/success status colours already in the app.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#1F6B5A">Add Entry</button>
+          <button class="btn" type="button" style="background:#1F6B5A">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#2D6A4F"></div>
+          <h3>J · Bottle green</h3>
+          <span class="hex">#2D6A4F</span>
+        </div>
+        <p class="why">Same family as the app’s success badge green — very consistent for “Mark complete”.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#2D6A4F">Add Entry</button>
+          <button class="btn" type="button" style="background:#2D6A4F">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#3F6212"></div>
+          <h3>K · Olive leaf</h3>
+          <span class="hex">#3F6212</span>
+        </div>
+        <p class="why">Earthy olive. More agricultural/vineyard; quieter than teal.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#3F6212">Add Entry</button>
+          <button class="btn" type="button" style="background:#3F6212">Mark Form Complete</button>
+        </div>
+      </article>
+    </div>
+
+    <h2 class="group">Cool modern (high contrast, less “wine”)</h2>
+    <div class="grid">
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#1D4E89"></div>
+          <h3>L · Cellar blue</h3>
+          <span class="hex">#1D4E89</span>
+        </div>
+        <p class="why">Clear industrial/UI blue. Familiar for “primary action” in software; less brand-specific.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#1D4E89">Add Entry</button>
+          <button class="btn" type="button" style="background:#1D4E89">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#0F766E"></div>
+          <h3>M · Deep teal</h3>
+          <span class="hex">#0F766E</span>
+        </div>
+        <p class="why">Modern SaaS teal. Very readable; sits between green and blue families.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#0F766E">Add Entry</button>
+          <button class="btn" type="button" style="background:#0F766E">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#4338CA"></div>
+          <h3>N · Indigo</h3>
+          <span class="hex">#4338CA</span>
+        </div>
+        <p class="why">Strong digital contrast. Distinct from status green/amber already on the page.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#4338CA">Add Entry</button>
+          <button class="btn" type="button" style="background:#4338CA">Mark Form Complete</button>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch" style="background:#BE123C"></div>
+          <h3>O · Signal rose</h3>
+          <span class="hex">#BE123C</span>
+        </div>
+        <p class="why">Bright rose-red. Maximum “tap me” energy; more retail than cellar.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#BE123C">Add Entry</button>
+          <button class="btn" type="button" style="background:#BE123C">Mark Form Complete</button>
+        </div>
+      </article>
+    </div>
+
+    <h2 class="group">Split idea (optional later)</h2>
+    <div class="grid">
+      <article class="option">
+        <div class="option-head">
+          <div class="swatch dual" style="--c1:#1D4E89; --c2:#2D6A4F"></div>
+          <h3>P · Two-tone actions</h3>
+          <span class="hex">#1D4E89 + #2D6A4F</span>
+        </div>
+        <p class="why">Blue for “Add Entry” (input), green for “Mark Form Complete” (finish). More teaching for operators; clearer workflow.</p>
+        <div class="row">
+          <button class="btn outline" type="button">Cancel</button>
+          <button class="btn" type="button" style="background:#1D4E89">Add Entry</button>
+          <button class="btn" type="button" style="background:#2D6A4F">Mark Form Complete</button>
+        </div>
+      </article>
+    </div>
+
+    <footer class="note">
+      Reply with a letter (A–P), or a hex you like, and I’ll apply it to primary action buttons only.
+      Header logo bar stays black/white.
+    </footer>
+  </div>
+</body>
+</html>

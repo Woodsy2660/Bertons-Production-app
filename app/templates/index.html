@@ -2,6 +2,19 @@
 
 {% block title %}Bottling Runs - Berton Bottling{% endblock %}
 
+{% macro run_event_time(batch) %}
+{# Event clock for operators/managers: when this run was started, reopened, or completed. #}
+{% if batch.status.value == 'complete' %}
+Completed {{ format_sydney(batch.updated_at) }}
+{% elif batch.status.value == 'reopened' %}
+Reopened {{ format_sydney(batch.updated_at) }}
+{% elif batch.status.value == 'awaiting_review' %}
+Submitted {{ format_sydney(batch.updated_at) }}
+{% else %}
+Started {{ format_sydney(batch.created_at) }}
+{% endif %}
+{% endmacro %}
+
 {% macro run_card(batch, status_label, status_modifier) %}
 <a href="/batches/{{ batch.id }}" class="run-card">
     <div class="run-card-head">
@@ -10,10 +23,9 @@
     </div>
     <p class="run-card-meta">
         {% if batch.header and batch.header.run_date %}
-        {{ batch.header.run_date.strftime('%d %b %Y') }}
-        {% else %}
-        {{ batch.created_at.strftime('%d %b %Y') }}
+        <span class="run-card-meta-line">Run date {{ batch.header.run_date.strftime('%d %b %Y') }}</span>
         {% endif %}
+        <span class="run-card-meta-line run-card-meta-line--event">{{ run_event_time(batch) }}</span>
     </p>
 </a>
 {% endmacro %}
@@ -23,16 +35,12 @@
     <header class="dashboard-header flex flex-wrap items-center justify-between gap-4">
         <div>
             <h1 class="dashboard-title">Bottling Runs</h1>
-            <p class="dashboard-subtitle">
-                {% if role == 'manager' %}
-                Active production, review queue, and completed runs.
-                {% else %}
-                Today's runs and recently completed batches.
-                {% endif %}
-            </p>
         </div>
         {% if role == 'manager' %}
-        <a href="/batches/new" class="btn-primary text-lg">+ Start New Run</a>
+        <div class="flex flex-wrap gap-3">
+            <a href="/runs/history" class="btn-secondary text-lg">Run history</a>
+            <a href="/batches/new" class="btn-primary text-lg">+ Start New Run</a>
+        </div>
         {% endif %}
     </header>
 
@@ -49,12 +57,15 @@
     </section>
     {% endif %}
 
-    {% if role == 'manager' and review_queue %}
+    {% if review_queue %}
     <section class="dashboard-section">
         <h2 class="dashboard-section-title">
             Awaiting Review
             <span class="dashboard-section-count">{{ review_count }}</span>
         </h2>
+        {% if role == 'operator' %}
+        <p class="dashboard-section-hint">These runs are with the manager — no action needed from the floor.</p>
+        {% endif %}
         <div class="run-grid">
             {% for batch in review_queue %}
             {{ run_card(batch, 'Awaiting Review', 'review') }}
@@ -65,12 +76,38 @@
 
     {% if complete_batches %}
     <section class="dashboard-section">
-        <h2 class="dashboard-section-title">Completed Runs</h2>
+        <div class="dashboard-section-head">
+            <h2 class="dashboard-section-title">
+                Completed Runs
+                {% if role == 'manager' and complete_total %}
+                <span class="dashboard-section-count">{{ complete_total }}{% if complete_has_more %}+{% endif %}</span>
+                {% endif %}
+            </h2>
+            {% if role == 'manager' %}
+            <a href="/runs/history" class="dashboard-section-link">Search full history →</a>
+            {% endif %}
+        </div>
         <div class="run-grid">
             {% for batch in complete_batches %}
             {{ run_card(batch, 'Complete', 'complete') }}
             {% endfor %}
         </div>
+        {% if role == 'manager' and complete_has_more %}
+        <p class="dashboard-section-footnote">
+            Showing latest {{ complete_batches|length }} complete runs.
+            <a href="/runs/history">Open history</a> to search older archives.
+        </p>
+        {% endif %}
+    </section>
+    {% elif role == 'manager' %}
+    <section class="dashboard-section">
+        <div class="dashboard-section-head">
+            <h2 class="dashboard-section-title">Completed Runs</h2>
+            <a href="/runs/history" class="dashboard-section-link">Search full history →</a>
+        </div>
+        <p class="dashboard-section-footnote">No complete runs in the current list.
+            <a href="/runs/history">Search history</a> for archived batches.
+        </p>
     </section>
     {% endif %}
 
@@ -81,7 +118,7 @@
             {% if role == 'manager' %}
             Upload a work order to start a bottling run.
             {% else %}
-            No runs scheduled for today.
+            No active or recent runs to show.
             {% endif %}
         </p>
         {% if role == 'manager' %}

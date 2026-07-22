@@ -4,24 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Berton Bottling{% endblock %}</title>
+    <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/img/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/css/berton.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        /* Match official Berton logo ink #231f20 */
+                        primary: '#231f20',
+                        muted: '#5c5c5c',
+                    },
+                    fontFamily: {
+                        sans: ['Poppins', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/berton.css?v=20">
     {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col {% block body_class %}{% endblock %}"
+      {% block body_attrs %}{% endblock %}>
     <nav class="berton-nav">
-        <div class="max-w-6xl mx-auto px-4 py-4">
+        <div class="max-w-6xl mx-auto px-4 py-3">
             <div class="flex items-center justify-between flex-wrap gap-3">
-                <div class="flex items-center gap-3">
-                    <a href="/" class="brand text-white no-underline">Berton Vineyards</a>
+                <div class="flex items-center gap-3 min-w-0">
+                    <a href="/" class="nav-brand" aria-label="Berton Vineyards home">
+                        <img
+                            src="/static/img/berton-logo-white.svg"
+                            alt="Berton Fine Australian Wines"
+                            class="nav-logo"
+                            width="176"
+                            height="85"
+                        >
+                    </a>
                     <span class="subtitle hidden sm:inline">Bottling Production</span>
                 </div>
                 <div class="flex items-center gap-3">
                     {% set nav_role = get_role(request) %}
                     {% if nav_role %}
+                    {% if nav_role == 'manager' %}
+                    <a href="/feedback" class="nav-link-secondary">Feedback</a>
+                    {% endif %}
                     <span class="role-badge role-{{ nav_role }}">{{ nav_role|title }}</span>
                     <form action="/logout" method="POST" class="inline">
                         <button type="submit" class="touch-target bg-transparent border-0 cursor-pointer text-white">Sign Out</button>
@@ -32,14 +62,170 @@
         </div>
     </nav>
 
-    <main class="flex-1 max-w-6xl mx-auto px-4 py-8 w-full">
+    <main class="flex-1 {% block main_class %}max-w-6xl mx-auto{% endblock %} px-4 py-8 w-full">
         {% block content %}{% endblock %}
     </main>
 
+    {% block footer %}
     <footer class="berton-footer mt-auto">
         <div class="max-w-6xl mx-auto px-4 py-5 text-center">
             Berton Vineyards &mdash; Bottling Run Management
         </div>
     </footer>
+    {% endblock %}
+
+    {% set feedback_role = get_role(request) %}
+    {% if feedback_role %}
+    <div id="feedback-flash" class="feedback-flash" hidden role="status" aria-live="polite"></div>
+
+    <button type="button"
+            id="feedback-fab"
+            class="feedback-fab touch-target"
+            aria-haspopup="dialog"
+            aria-controls="feedback-modal"
+            aria-expanded="false">
+        Report issue
+    </button>
+
+    <div id="feedback-modal" class="feedback-modal" hidden role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+        <div class="feedback-modal-backdrop" data-feedback-close></div>
+        <div class="feedback-modal-panel">
+            <header class="feedback-modal-header">
+                <h2 id="feedback-modal-title">Report an issue</h2>
+                <button type="button" class="feedback-modal-close touch-target" data-feedback-close aria-label="Close">&times;</button>
+            </header>
+            <form id="feedback-form" method="POST" action="/feedback" class="feedback-form">
+                <input type="hidden" name="source_path" id="feedback-source-path" value="">
+                <input type="hidden" name="page_context" id="feedback-page-context" value="">
+                <input type="hidden" name="batch_id" id="feedback-batch-id" value="">
+                <input type="hidden" name="return_to" id="feedback-return-to" value="">
+
+                <fieldset class="feedback-type-fieldset">
+                    <legend>Type</legend>
+                    <div class="feedback-type-options" role="radiogroup" aria-label="Report type">
+                        <label class="feedback-type-option">
+                            <input type="radio" name="report_type" value="bug" required>
+                            <span>Bug</span>
+                        </label>
+                        <label class="feedback-type-option">
+                            <input type="radio" name="report_type" value="data_change">
+                            <span>Data field change</span>
+                        </label>
+                        <label class="feedback-type-option">
+                            <input type="radio" name="report_type" value="suggestion">
+                            <span>Suggestion</span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <label class="feedback-desc-label" for="feedback-description">Description</label>
+                <textarea id="feedback-description"
+                          name="description"
+                          class="feedback-description"
+                          rows="5"
+                          maxlength="4000"
+                          required
+                          placeholder="Describe the issue or suggestion"></textarea>
+
+                <div class="feedback-modal-actions">
+                    <button type="button" class="btn-secondary touch-target" data-feedback-close>Cancel</button>
+                    <button type="submit" id="feedback-submit" class="btn-primary touch-target">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var fab = document.getElementById('feedback-fab');
+        var modal = document.getElementById('feedback-modal');
+        var form = document.getElementById('feedback-form');
+        var flash = document.getElementById('feedback-flash');
+        if (!fab || !modal || !form) return;
+
+        function readContext() {
+            var body = document.body;
+            var batchEl = document.querySelector('[data-batch-id]');
+            var batchId = (body && body.dataset.batchId) || (batchEl && batchEl.dataset.batchId) || '';
+            var pageCtx = (body && body.dataset.pageContext) || '';
+            if (!pageCtx && batchEl && batchEl.dataset.pageContext) {
+                pageCtx = batchEl.dataset.pageContext;
+            }
+            return { batchId: batchId, pageContext: pageCtx };
+        }
+
+        function openModal() {
+            var ctx = readContext();
+            var path = window.location.pathname + window.location.search;
+            // Strip our own flash query so return_to stays clean
+            path = path.replace(/([?&])feedback=(ok|error)(&|$)/, function (_, a, _v, c) {
+                if (a === '?' && c === '&') return '?';
+                if (c === '&') return a;
+                return '';
+            }).replace(/[?&]$/, '');
+            document.getElementById('feedback-source-path').value = path;
+            document.getElementById('feedback-return-to').value = path;
+            document.getElementById('feedback-batch-id').value = ctx.batchId || '';
+            document.getElementById('feedback-page-context').value = ctx.pageContext || '';
+            modal.hidden = false;
+            fab.setAttribute('aria-expanded', 'true');
+            document.body.classList.add('feedback-modal-open');
+            var first = form.querySelector('input[name="report_type"]');
+            if (first) first.focus();
+        }
+
+        function closeModal() {
+            modal.hidden = true;
+            fab.setAttribute('aria-expanded', 'false');
+            document.body.classList.remove('feedback-modal-open');
+            form.reset();
+            var submit = document.getElementById('feedback-submit');
+            if (submit) {
+                submit.disabled = false;
+                submit.textContent = 'Submit';
+            }
+        }
+
+        fab.addEventListener('click', openModal);
+        modal.querySelectorAll('[data-feedback-close]').forEach(function (el) {
+            el.addEventListener('click', closeModal);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !modal.hidden) closeModal();
+        });
+
+        form.addEventListener('submit', function () {
+            var submit = document.getElementById('feedback-submit');
+            if (submit) {
+                submit.disabled = true;
+                submit.textContent = 'Submitting…';
+            }
+        });
+
+        // Flash banner from redirect ?feedback=ok|error
+        try {
+            var params = new URLSearchParams(window.location.search);
+            var status = params.get('feedback');
+            if (status === 'ok' || status === 'error') {
+                if (flash) {
+                    flash.hidden = false;
+                    flash.className = 'feedback-flash feedback-flash--' + status;
+                    flash.textContent = status === 'ok'
+                        ? 'Thanks — your report has been submitted.'
+                        : 'Could not submit report. Please choose a type and enter a description.';
+                    setTimeout(function () { flash.hidden = true; }, 5000);
+                }
+                params.delete('feedback');
+                var next = window.location.pathname;
+                var qs = params.toString();
+                if (qs) next += '?' + qs;
+                window.history.replaceState({}, '', next);
+            }
+        } catch (e) { /* ignore */ }
+    })();
+    </script>
+    {% endif %}
+
+    {% block scripts %}{% endblock %}
 </body>
 </html>

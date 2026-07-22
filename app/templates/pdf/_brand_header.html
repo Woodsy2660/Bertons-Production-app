@@ -1,0 +1,19 @@
+{#
+  Shared PDF form header used by every station form.
+  Title + doc number only. Logo is applied after HTML→PDF on page 1 only
+  (see apply_form_title_logo in compilation.py) so it never covers readings
+  on continuation pages and is always a fixed small print size.
+  Context: form_name (required), doc_number (optional).
+#}
+<div class="header-box pdf-page-header">
+    <table class="pdf-brand-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+            <td class="pdf-brand-title-cell" width="100%" valign="top" align="left">
+                <div class="form-title">{{ form_name }}</div>
+                {% if doc_number %}
+                <div class="doc-number">{{ doc_number }}</div>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+</div>

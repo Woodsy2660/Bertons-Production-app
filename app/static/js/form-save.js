@@ -31,7 +31,14 @@
             if (el.type === "submit" || el.type === "button") continue;
 
             if (el.type === "checkbox") {
-                data[el.name] = el.checked ? (el.value || "Y") : "N";
+                // Multi-select enums use name="field[]" and only checked values
+                if (el.name.endsWith("[]")) {
+                    const key = el.name.slice(0, -2);
+                    if (!multi[key]) multi[key] = [];
+                    if (el.checked && el.value !== "") multi[key].push(el.value);
+                } else {
+                    data[el.name] = el.checked ? (el.value || "Y") : "N";
+                }
             } else if (el.type === "radio") {
                 if (el.checked) data[el.name] = el.value;
             } else if (el.name.endsWith("[]")) {
@@ -202,8 +209,13 @@
     }
 
     function updateCompletePanel(count) {
-        const completePanel = document.getElementById("form-complete-panel");
-        if (completePanel) completePanel.hidden = count === 0;
+        const hint = document.getElementById("form-complete-hint");
+        const form = document.getElementById("form-complete-form");
+        const submitBtn = form?.querySelector('[type="submit"]');
+        const hasEntries = count > 0;
+
+        if (hint) hint.hidden = hasEntries;
+        if (submitBtn) submitBtn.disabled = !hasEntries;
     }
 
     function trimPreviewRows(tbody, previewLimit) {
@@ -288,6 +300,7 @@
     function bindAutoSaveForm(form, batchId, formType, saveKind, bar) {
         let timer = null;
         let lastPayload = "";
+        let inFlight = null;
 
         const save = async () => {
             const body = formToObject(form);
@@ -302,28 +315,63 @@
 
             setStatus(bar, "saving", "Saving…");
 
+            const run = (async () => {
+                try {
+                    await postJson(url, body);
+                    lastPayload = payloadKey;
+                    setStatus(bar, "saved", "Saved");
+                    window.setTimeout(() => {
+                        if (bar.dataset.state === "saved") bar.hidden = true;
+                    }, 1500);
+                } catch (err) {
+                    queueItem({ id: queueId, url, body, type: saveKind });
+                    setStatus(bar, "queued", "Offline — changes kept locally, will retry");
+                    updateQueuedCount(bar);
+                    console.warn("Auto-save failed, queued locally:", err.message);
+                }
+            })();
+            inFlight = run;
             try {
-                await postJson(url, body);
-                lastPayload = payloadKey;
-                setStatus(bar, "saved", "Saved");
-                window.setTimeout(() => {
-                    if (bar.dataset.state === "saved") bar.hidden = true;
-                }, 1500);
-            } catch (err) {
-                queueItem({ id: queueId, url, body, type: saveKind });
-                setStatus(bar, "queued", "Offline — changes kept locally, will retry");
-                updateQueuedCount(bar);
-                console.warn("Auto-save failed, queued locally:", err.message);
+                await run;
+            } finally {
+                if (inFlight === run) inFlight = null;
             }
         };
 
-        const schedule = () => {
+        const schedule = (immediate) => {
             window.clearTimeout(timer);
+            if (immediate) {
+                timer = null;
+                save();
+                return;
+            }
             timer = window.setTimeout(save, DEBOUNCE_MS);
         };
 
-        form.addEventListener("input", schedule);
-        form.addEventListener("change", schedule);
+        form.addEventListener("input", () => schedule(false));
+        form.addEventListener("change", (event) => {
+            // Checkboxes (e.g. Filters used multi-select) save immediately so
+            // navigating away before the debounce window does not drop values.
+            const t = event.target;
+            const isCheck =
+                t &&
+                (t.type === "checkbox" ||
+                    (t.name && String(t.name).endsWith("[]")));
+            schedule(Boolean(isCheck));
+        });
+
+        // Flush pending debounced save when leaving the page
+        const flush = () => {
+            if (timer) {
+                window.clearTimeout(timer);
+                timer = null;
+                save();
+            }
+        };
+        window.addEventListener("pagehide", flush);
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "hidden") flush();
+        });
 
         form.addEventListener("submit", async (event) => {
             if (form.dataset.submitMode === "draft-only") {
@@ -340,6 +388,9 @@
 
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
+
+            const submitBtn = form.querySelector('[type="submit"]');
+            if (submitBtn?.disabled) return;
 
             setStatus(bar, "saving", "Marking form complete…");
 
@@ -360,10 +411,35 @@
 
             if (action !== "submit") return;
 
+            // Pick list: require operator to confirm stock codes before complete
+            if (formType === "pick_list") {
+                const stockCheck = form.querySelector("#pick_list_stock_checked");
+                if (stockCheck && !stockCheck.checked) {
+                    event.preventDefault();
+                    stockCheck.focus();
+                    setStatus(
+                        bar,
+                        "error",
+                        "Check the Stock Item codes and tick the confirmation box before completing."
+                    );
+                    return;
+                }
+                const confirmed = window.confirm(
+                    "Please confirm each Stock Item code is correct.\n\n" +
+                        "If extraction from the work order was wrong, edit the code first, then complete."
+                );
+                if (!confirmed) {
+                    event.preventDefault();
+                    return;
+                }
+            }
+
             event.preventDefault();
             const body = { ...formToObject(form), action: "submit" };
+            // Confirmation checkbox is UI-only — not stored on the form payload
+            delete body.stock_codes_checked;
 
-            setStatus(bar, "saving", "Submitting form…");
+            setStatus(bar, "saving", "Marking form complete…");
             try {
                 const result = await postJson(
                     `/api/batches/${batchId}/forms/${formType}/draft`,

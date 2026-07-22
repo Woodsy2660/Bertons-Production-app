@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback reports - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="feedback-list-page">
+    <header class="page-header mb-6">
+        <a href="/" class="back-link">&larr; Back to Runs</a>
+        <h1 class="dashboard-title mt-2">Feedback reports</h1>
+        <p class="dashboard-subtitle">
+            Bug reports, data-change requests, and suggestions from the floor.
+            Newest first. Read-only.
+        </p>
+    </header>
+
+    <form method="GET" action="/feedback" class="feedback-filter-bar mb-6">
+        <label for="feedback-type-filter" class="feedback-filter-label">Type</label>
+        <select id="feedback-type-filter" name="type" class="feedback-filter-select" onchange="this.form.submit()">
+            {% for value, label in type_options %}
+            <option value="{{ value }}" {% if filter_type == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <noscript>
+            <button type="submit" class="btn-secondary">Filter</button>
+        </noscript>
+    </form>
+
+    {% if not rows %}
+    <div class="berton-alert berton-alert-info">
+        No feedback reports{% if filter_type %} for this type{% endif %} yet.
+    </div>
+    {% else %}
+    <ul class="feedback-report-list" role="list">
+        {% for row in rows %}
+        <li class="feedback-report-card">
+            <div class="feedback-report-card-head">
+                <span class="feedback-type-badge feedback-type-badge--{{ row.report_type.value }}">
+                    {{ row.report_type_label }}
+                </span>
+                <time class="feedback-report-time">{{ row.submitted_at_sydney }}</time>
+            </div>
+            <p class="feedback-report-description">{{ row.description }}</p>
+            <dl class="feedback-report-meta">
+                <div>
+                    <dt>Role</dt>
+                    <dd>{{ row.submitted_role|title }}</dd>
+                </div>
+                <div>
+                    <dt>Device</dt>
+                    <dd>{{ row.device }}</dd>
+                </div>
+                {% if row.page_context %}
+                <div>
+                    <dt>Context</dt>
+                    <dd>{{ row.page_context }}</dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt>Page</dt>
+                    <dd class="feedback-mono">{{ row.source_path }}</dd>
+                </div>
+                {% if row.batch_id and row.run_number %}
+                <div>
+                    <dt>Run</dt>
+                    <dd><a href="/batches/{{ row.batch_id }}">Run {{ row.run_number }}</a></dd>
+                </div>
+                {% elif row.batch_id %}
+                <div>
+                    <dt>Run</dt>
+                    <dd><a href="/batches/{{ row.batch_id }}">Open batch</a></dd>
+                </div>
+                {% endif %}
+            </dl>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endblock %}

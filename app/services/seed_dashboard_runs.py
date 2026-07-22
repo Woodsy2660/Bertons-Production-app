@@ -735,3 +735,86 @@ async def create_dashboard_mock_runs(
     for batch in created:
         await db.refresh(batch)
     return created
+
+# Older completed runs for the manager history search showcase (not deleted by main seed).
+HISTORY_COMPLETED_RUNS = [
+    {"run_number": "15750", "product": "Heritage Cabernet 2021", "stock_item": "F21CSAHERAU6", "tank": "B301", "run_quantity": 2100, "packing_unit": "6750 6 x 750ml Bottles", "run_date_offset": -120},
+    {"run_number": "15751", "product": "Coastal Pinot Grigio 2024", "stock_item": "F24PGICOAU1", "tank": "B088", "run_quantity": 5600, "packing_unit": "C750 12 x 750ml Bottles", "run_date_offset": -110},
+    {"run_number": "15752", "product": "Barossa GSM 2022", "stock_item": "F22GSMBARAU6", "tank": "B214", "run_quantity": 1800, "packing_unit": "6750 6 x 750ml Bottles", "run_date_offset": -100},
+    {"run_number": "15753", "product": "Riverland Chardonnay 2023", "stock_item": "F23CHRIVAU1", "tank": "B056", "run_quantity": 7200, "packing_unit": "C750 12 x 750ml Bottles", "run_date_offset": -90},
+    {"run_number": "15754", "product": "Eden Valley Riesling 2025", "stock_item": "F25RIEEDAU1", "tank": "B019", "run_quantity": 3400, "packing_unit": "C750 12 x 750ml Bottles", "run_date_offset": -80},
+    {"run_number": "15755", "product": "McLaren Vale Shiraz 2021", "stock_item": "F21SHZMLAU6", "tank": "B177", "run_quantity": 2600, "packing_unit": "6750 6 x 750ml Bottles", "run_date_offset": -70},
+    {"run_number": "15756", "product": "Adelaide Hills Sauvignon Blanc 2024", "stock_item": "F24SBCAHAU1", "tank": "B042", "run_quantity": 4800, "packing_unit": "C750 12 x 750ml Bottles", "run_date_offset": -60},
+    {"run_number": "15757", "product": "Coonawarra Cabernet 2020", "stock_item": "F20CSACOOAU6", "tank": "B290", "run_quantity": 1500, "packing_unit": "6750 6 x 750ml Bottles", "run_date_offset": -50},
+    {"run_number": "15758", "product": "Riverland Moscato 2025", "stock_item": "F25MOSRIVAU1", "tank": "B011", "run_quantity": 9000, "packing_unit": "C750 12 x 750ml Bottles", "run_date_offset": -40},
+    {"run_number": "15759", "product": "Premium Sparkling Blanc 2023", "stock_item": "F23SPKPREAU6", "tank": "B333", "run_quantity": 1200, "packing_unit": "6750 6 x 750ml Bottles", "run_date_offset": -30},
+]
+
+
+async def create_history_completed_runs(
+    db: AsyncSession,
+    upload_dir: str,
+) -> list[Batch]:
+    """Add 10 older COMPLETE runs for history search (skips existing run numbers)."""
+    await _ensure_operators(db)
+    upload_path = Path(upload_dir)
+    upload_path.mkdir(parents=True, exist_ok=True)
+    today = date.today()
+    created: list[Batch] = []
+
+    existing = await db.execute(
+        select(Batch.run_number).where(
+            Batch.run_number.in_([c["run_number"] for c in HISTORY_COMPLETED_RUNS])
+        )
+    )
+    already = set(existing.scalars().all())
+
+    for cfg in HISTORY_COMPLETED_RUNS:
+        if cfg["run_number"] in already:
+            continue
+        run_date = today + timedelta(days=cfg["run_date_offset"])
+        stamp = datetime.utcnow() + timedelta(days=cfg["run_date_offset"])
+        batch = Batch(
+            run_number=cfg["run_number"],
+            created_by="History Seed",
+            status=BatchStatus.COMPLETE,
+            is_locked=True,
+            created_at=stamp,
+            updated_at=stamp,
+        )
+        db.add(batch)
+        await db.flush()
+        db.add(
+            BatchHeader(
+                batch=batch,
+                product=cfg["product"],
+                stock_item=cfg["stock_item"],
+                tank=cfg["tank"],
+                run_date=run_date,
+                packing_unit=cfg["packing_unit"],
+                packaging_line="BERT",
+                run_quantity=cfg["run_quantity"],
+                pick_list_lines=LABEL_LINES,
+            )
+        )
+        listing_path = await _add_listing_document(db, batch, upload_path, cfg["product"])
+        await _populate_all_forms(db, batch, cfg, run_date)
+        mark_complete(batch)
+        db.add(
+            Compilation(
+                batch_id=batch.id,
+                output_filename=f"{cfg['run_number']}_Compiled.pdf",
+                stored_path=str(listing_path),
+                slot_manifest={"seed": True, "history": True},
+                is_current=True,
+                compiled_by="Manager",
+                compiled_at=stamp + timedelta(hours=3),
+            )
+        )
+        created.append(batch)
+
+    if created:
+        await db.commit()
+        for batch in created:
+            await db.refresh(batch)
+    return created

@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import date, datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import Role
-from app.forms import FormType, get_form_template
+from app.forms import FieldType, FormType, get_form_template
 from app.models import (
     AccrualMode as ModelAccrualMode,
     Batch,
@@ -43,10 +44,16 @@ def build_form_payload_from_mapping(
             field_key = key[:-2]
             if field_key not in multi_value_fields:
                 multi_value_fields[field_key] = []
-            if value is not None and str(value).strip():
-                multi_value_fields[field_key].append(value)
+            # JSON may send the whole list under key "field[]" once
+            if isinstance(value, list):
+                for item in value:
+                    if item is not None and str(item).strip():
+                        multi_value_fields[field_key].append(str(item).strip())
+            elif value is not None and str(value).strip():
+                multi_value_fields[field_key].append(str(value).strip())
         elif isinstance(value, list):
-            payload[key] = value if value else None
+            cleaned = [str(v).strip() for v in value if v is not None and str(v).strip()]
+            payload[key] = cleaned if cleaned else None
         else:
             payload[key] = value if value not in ("", None) else None
 
@@ -54,6 +61,41 @@ def build_form_payload_from_mapping(
         payload[key] = values if values else None
 
     return payload
+
+
+def normalize_multi_select_enums(
+    form_type: FormType | str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Order multi-select enum values as defined on the template; accept legacy scalars."""
+    try:
+        ft = form_type if isinstance(form_type, FormType) else FormType(form_type)
+        template = get_form_template(ft)
+    except ValueError:
+        return payload
+
+    out = dict(payload)
+    for field in list(template.header_fields) + list(template.reading_fields):
+        if not field.multi_select or field.field_type != FieldType.ENUM:
+            continue
+        raw = out.get(field.key)
+        if raw is None or raw == "":
+            out[field.key] = None
+            continue
+        if isinstance(raw, str):
+            selected = {raw}
+        elif isinstance(raw, (list, tuple, set)):
+            selected = {str(v) for v in raw if v is not None and str(v).strip()}
+        else:
+            selected = {str(raw)}
+        allowed = field.enum_values or []
+        ordered = [v for v in allowed if v in selected]
+        # Keep any unexpected values at the end (should not happen if UI is correct)
+        for v in selected:
+            if v not in ordered:
+                ordered.append(v)
+        out[field.key] = ordered if ordered else None
+    return out
 
 
 def build_pick_list_lines(data: dict[str, Any]) -> list[dict]:
@@ -66,9 +108,13 @@ def build_pick_list_lines(data: dict[str, Any]) -> list[dict]:
             line_indices.add(int(key.split("_")[1]))
 
     for idx in sorted(line_indices):
+        stock_raw = data.get(f"lines_{idx}_stock_item", "")
+        stock_item = str(stock_raw).strip() if stock_raw is not None else ""
+        desc_raw = data.get(f"lines_{idx}_description", "")
+        description = str(desc_raw).strip() if desc_raw is not None else ""
         lines.append({
-            "stock_item": data.get(f"lines_{idx}_stock_item", ""),
-            "description": data.get(f"lines_{idx}_description", ""),
+            "stock_item": stock_item,
+            "description": description,
             "required": data.get(f"lines_{idx}_required") or None,
             "supplied_qty": data.get(f"lines_{idx}_supplied_qty") or None,
             "returned_qty": data.get(f"lines_{idx}_returned_qty") or None,
@@ -244,6 +290,7 @@ async def save_form_header(
     """Save accrual form header fields (manufacturer, filters, etc.)."""
     assert_can_write_forms(batch, role)
     form_template = get_form_template(FormType(form_type))
+    payload = normalize_multi_select_enums(form_type, payload)
 
     fi_result = await db.execute(
         select(FormInstance)
@@ -253,7 +300,14 @@ async def save_form_header(
     form_instance = fi_result.scalar_one_or_none()
 
     if form_instance:
-        form_instance.header_payload = payload
+        # Merge so partial clients do not wipe unrelated header keys; multi-select
+        # fields present in payload (including empty → None) still overwrite.
+        merged = dict(form_instance.header_payload or {})
+        merged.update(payload)
+        form_instance.header_payload = merged
+        from sqlalchemy.orm.attributes import flag_modified
+
+        flag_modified(form_instance, "header_payload")
         form_instance.last_edited_at = datetime.utcnow()
         if form_instance.status == FormStatus.NOT_STARTED:
             form_instance.status = FormStatus.IN_PROGRESS
@@ -282,64 +336,110 @@ async def add_reading(
     payload: dict[str, Any],
     role: Role = "operator",
 ) -> tuple[FormInstance, Reading, int]:
-    """Append one reading to an accrual form. Returns instance, reading, total count."""
+    """Append one reading to an accrual form. Returns instance, reading, total count.
+
+    Sequence allocation is serialised per batch+form via a transaction-scoped
+    Postgres advisory lock + MAX(sequence)+1, with a unique constraint as
+    backstop so concurrent tablets never share a sequence number.
+    """
     assert_can_write_forms(batch, role)
     operator_identifier = require_operator_identifier(operator_identifier)
     form_template = get_form_template(FormType(form_type))
+    model_type = ModelFormType(form_type)
+    captured = _parse_captured_at(captured_at)
 
-    fi_result = await db.execute(
-        select(FormInstance)
-        .where(FormInstance.batch_id == batch.id)
-        .where(FormInstance.form_type == ModelFormType(form_type))
+    from sqlalchemy.exc import DBAPIError, IntegrityError
+
+    last_error: Exception | None = None
+    lock_k1 = int(batch.id.int % (2**31 - 1)) or 1
+    lock_k2 = (sum(ord(c) for c in form_type) % (2**31 - 1)) or 1
+
+    for _attempt in range(12):
+        try:
+            # Block other writers for this batch+form until commit/rollback.
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(:k1, :k2)"),
+                {"k1": lock_k1, "k2": lock_k2},
+            )
+
+            fi_result = await db.execute(
+                select(FormInstance)
+                .where(FormInstance.batch_id == batch.id)
+                .where(FormInstance.form_type == model_type)
+            )
+            form_instance = fi_result.scalar_one_or_none()
+            if not form_instance:
+                form_instance = FormInstance(
+                    batch_id=batch.id,
+                    form_type=model_type,
+                    accrual_mode=ModelAccrualMode(form_template.accrual_mode.value),
+                    status=FormStatus.IN_PROGRESS,
+                )
+                db.add(form_instance)
+                await db.flush()
+
+            max_result = await db.execute(
+                select(func.coalesce(func.max(Reading.sequence), 0)).where(
+                    Reading.form_instance_id == form_instance.id
+                )
+            )
+            sequence = int(max_result.scalar_one()) + 1
+
+            reading = Reading(
+                form_instance_id=form_instance.id,
+                sequence=sequence,
+                captured_at=captured,
+                operator_identifier=operator_identifier,
+                payload=payload,
+            )
+            db.add(reading)
+
+            if form_instance.status == FormStatus.SUBMITTED:
+                form_instance.status = FormStatus.EDITED_SINCE_SUBMIT
+            elif form_instance.status == FormStatus.NOT_STARTED:
+                form_instance.status = FormStatus.IN_PROGRESS
+            form_instance.last_edited_at = datetime.utcnow()
+            form_instance.last_edited_by = operator_identifier
+
+            await db.commit()
+            await db.refresh(reading)
+            await db.refresh(form_instance)
+            return form_instance, reading, sequence
+        except HTTPException:
+            raise
+        except (IntegrityError, DBAPIError) as exc:
+            last_error = exc
+            await db.rollback()
+            continue
+        except Exception as exc:
+            # Catch asyncpg unique violations wrapped outside IntegrityError
+            msg = str(exc).lower()
+            if "unique" in msg or "duplicate key" in msg or "deadlock" in msg:
+                last_error = exc
+                await db.rollback()
+                continue
+            await db.rollback()
+            raise
+
+    raise RuntimeError(
+        f"Failed to allocate unique reading sequence after retries: {last_error}"
     )
-    form_instance = fi_result.scalar_one_or_none()
-
-    if not form_instance:
-        form_instance = FormInstance(
-            batch_id=batch.id,
-            form_type=ModelFormType(form_type),
-            accrual_mode=ModelAccrualMode(form_template.accrual_mode.value),
-            status=FormStatus.IN_PROGRESS,
-        )
-        db.add(form_instance)
-        await db.flush()
-
-    count_result = await db.execute(
-        select(func.count(Reading.id))
-        .where(Reading.form_instance_id == form_instance.id)
-    )
-    sequence = (count_result.scalar_one() or 0) + 1
-
-    reading = Reading(
-        form_instance_id=form_instance.id,
-        sequence=sequence,
-        captured_at=_parse_captured_at(captured_at),
-        operator_identifier=operator_identifier,
-        payload=payload,
-    )
-    db.add(reading)
-
-    if form_instance.status == FormStatus.SUBMITTED:
-        form_instance.status = FormStatus.EDITED_SINCE_SUBMIT
-    elif form_instance.status == FormStatus.NOT_STARTED:
-        form_instance.status = FormStatus.IN_PROGRESS
-    form_instance.last_edited_at = datetime.utcnow()
-    form_instance.last_edited_by = operator_identifier
-
-    await db.commit()
-    await db.refresh(reading)
-    await db.refresh(form_instance)
-
-    return form_instance, reading, sequence
 
 
 async def _renumber_readings(db: AsyncSession, form_instance_id: uuid.UUID) -> None:
+    """Renumber sequences 1..N without violating the unique (form, sequence) constraint."""
     result = await db.execute(
         select(Reading)
         .where(Reading.form_instance_id == form_instance_id)
         .order_by(Reading.sequence, Reading.created_at)
+        .with_for_update()
     )
-    for index, reading in enumerate(result.scalars().all(), start=1):
+    readings = list(result.scalars().all())
+    # Two-phase renumber avoids unique collisions when reordering
+    for index, reading in enumerate(readings, start=1):
+        reading.sequence = 1_000_000 + index
+    await db.flush()
+    for index, reading in enumerate(readings, start=1):
         reading.sequence = index
 
 

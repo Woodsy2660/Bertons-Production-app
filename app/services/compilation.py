@@ -1,5 +1,7 @@
+import base64
 import re
 import shutil
+from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
 from io import BytesIO
@@ -9,7 +11,188 @@ from pypdf import PdfWriter, PdfReader
 
 from app.models import Batch, Compilation, FormInstance, UploadedDocument, DocumentSlot
 from app.forms import FormType, FORM_TEMPLATES, get_form_template
-from app.services.storage import build_compilation_path, open_pdf_reader, save_bytes
+from app.services.storage import build_compilation_path, read_bytes, save_bytes
+
+_STATIC_IMG = Path(__file__).resolve().parent.parent / "static" / "img"
+# Docker image may mount static under /app/static; prefer in-tree then container paths.
+_LOGO_CANDIDATES: list[tuple[Path, str]] = [
+    # Prefer dedicated print/PDF raster assets (PyMuPDF stamp on form title page).
+    (_STATIC_IMG / "berton-logo-pdf.png", "image/png"),
+    (_STATIC_IMG / "berton_logo.png", "image/png"),
+    (Path("/app/static/img/berton-logo-pdf.png"), "image/png"),
+    (Path("/app/static/img/berton_logo.png"), "image/png"),
+    (Path("/app/static/berton_logo.png"), "image/png"),
+    (_STATIC_IMG / "berton-logo-print.jpg", "image/jpeg"),
+    (_STATIC_IMG / "berton-logo.jpg", "image/jpeg"),
+    (_STATIC_IMG / "berton-logo-black.svg", "image/svg+xml"),
+]
+
+
+@lru_cache(maxsize=1)
+def pdf_logo_path() -> Path | None:
+    """Filesystem path to the preferred logo asset (PNG/SVG first)."""
+    for path, _media in _LOGO_CANDIDATES:
+        if path.is_file():
+            return path
+    return None
+
+
+@lru_cache(maxsize=1)
+def pdf_logo_data_uri() -> str:
+    """Base64 data URI for WeasyPrint form templates.
+
+    Computed once (lru_cache) at first use / process lifetime — not per render —
+    so the container has no relative-path dependency at HTML→PDF time.
+    """
+    for path, media_type in _LOGO_CANDIDATES:
+        if path.is_file():
+            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+            return f"data:{media_type};base64,{encoded}"
+    return ""
+
+
+# Module-level constant for template context (`logo_src`).
+_LOGO_SRC: str = pdf_logo_data_uri()
+
+
+# Logo height in print millimetres (title page of each form only).
+_LOGO_HEIGHT_MM = 10.0
+# Distance from the physical page edges to the logo box.
+_LOGO_TOP_MM = 5.0
+_LOGO_RIGHT_MM = 8.0
+
+
+def _logo_draw_size_pt() -> tuple[float, float]:
+    """Return (width_pt, height_pt) for the brand logo at _LOGO_HEIGHT_MM."""
+    mm = 72.0 / 25.4
+    logo_h = _LOGO_HEIGHT_MM * mm
+    logo = pdf_logo_path()
+    aspect = 2.08
+    if logo:
+        try:
+            from PIL import Image
+
+            with Image.open(logo) as im:
+                aspect = im.width / max(im.height, 1)
+        except Exception:
+            pass
+    return logo_h * aspect, logo_h
+
+
+def _title_aligned_logo_rect(page) -> "fitz.Rect":
+    """Logo box (see _LOGO_HEIGHT_MM): page top-right, aligned with the form title."""
+    import fitz
+
+    mm = 72.0 / 25.4
+    logo_w, logo_h = _logo_draw_size_pt()
+    r = page.rect
+
+    # Default: fixed inset from the physical top-right corner.
+    y1 = r.y0 + (_LOGO_TOP_MM * mm)
+
+    # Prefer vertical alignment with the first title line near the top of the page.
+    try:
+        for block in page.get_text("dict").get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = line.get("spans") or []
+                text = "".join(s.get("text", "") for s in spans).strip()
+                if not text:
+                    continue
+                bb = line.get("bbox")
+                if not bb:
+                    continue
+                # Title band is in the upper content area (below page margin).
+                if bb[1] < r.y0 + 90:
+                    title_cy = (bb[1] + bb[3]) / 2.0
+                    y1 = title_cy - (logo_h / 2.0)
+                    break
+            else:
+                continue
+            break
+    except Exception:
+        pass
+
+    # Clamp so the logo stays fully on-page.
+    y1 = max(r.y0 + (2.0 * mm), min(y1, r.y1 - logo_h - (2.0 * mm)))
+    x2 = r.x1 - (_LOGO_RIGHT_MM * mm)
+    x1 = x2 - logo_w
+    y2 = y1 + logo_h
+    return fitz.Rect(x1, y1, x2, y2)
+
+
+def apply_form_title_logo(pdf_bytes: bytes) -> bytes:
+    """Place a Berton logo top-right on page 1 only of a station-form PDF.
+
+    Only used for app form renders — never for uploaded/imported PDFs.
+    Size is ``_LOGO_HEIGHT_MM``. Strips embedded images then stamps page 0 only.
+    """
+    import logging
+
+    log = logging.getLogger(__name__)
+    logo = pdf_logo_path()
+    if not logo or not pdf_bytes:
+        if not logo:
+            log.warning("Form title logo skipped: no logo file found under static/img")
+        return pdf_bytes
+
+    try:
+        import fitz  # PyMuPDF — required for exact mm placement (not in CSS)
+    except ImportError:
+        log.error(
+            "Form title logo skipped: PyMuPDF (fitz) is not installed. "
+            "Install pymupdf so station forms get the top-right brand mark."
+        )
+        return pdf_bytes
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        # Remove engine-embedded logos from every page (prevents page-2 bleed).
+        for page in doc:
+            xrefs = {img[0] for img in page.get_images(full=True)}
+            for xref in xrefs:
+                try:
+                    page.delete_image(xref)
+                except Exception:
+                    pass
+            leftovers = []
+            try:
+                for info in page.get_image_info():
+                    bbox = info.get("bbox")
+                    if bbox:
+                        leftovers.append(fitz.Rect(bbox))
+            except Exception:
+                pass
+            if leftovers:
+                for rect in leftovers:
+                    page.add_redact_annot(rect, fill=(1, 1, 1))
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE)
+
+        page0 = doc[0]
+        page0.insert_image(
+            _title_aligned_logo_rect(page0),
+            filename=str(logo),
+            keep_proportion=False,
+            overlay=True,
+        )
+        return doc.tobytes(deflate=True, garbage=3)
+    except Exception:
+        log.exception("Form title logo stamp failed")
+        return pdf_bytes
+    finally:
+        doc.close()
+
+
+# Pallet tags only — do not use for uploaded compile slots.
+def stamp_berton_logo_on_pdf(pdf_bytes: bytes) -> bytes:
+    """Stamp logo on page 1 only (pallet tags / non-compile helpers)."""
+    return apply_form_title_logo(pdf_bytes)
+
+
+
+
+
 
 
 # 16-slot compile template from spec
@@ -74,7 +257,11 @@ async def compile_batch(
     Walks the 16-slot template, rendering app forms and merging with uploads.
     """
     templates_path = Path(__file__).parent.parent / "templates" / "pdf"
-    env = Environment(loader=FileSystemLoader(str(templates_path)))
+    # Autoescape HTML so operator/extracted text is literal in PDF templates (TEST-S1).
+    env = Environment(
+        loader=FileSystemLoader(str(templates_path)),
+        autoescape=True,
+    )
 
     # Build form instances map
     form_instances_map = {fi.form_type.value: fi for fi in batch.form_instances}
@@ -133,7 +320,9 @@ async def compile_batch(
             if docs:
                 doc = docs[0]  # Single upload slot
                 try:
-                    reader = await open_pdf_reader(doc.stored_path)
+                    # Uploaded PDFs are included as-is — no Berton logo overlay.
+                    raw = await read_bytes(doc.stored_path)
+                    reader = PdfReader(BytesIO(raw))
                     for page in reader.pages:
                         pdf_writer.add_page(page)
                     slot_manifest[f"slot_{slot_num}"] = {
@@ -155,7 +344,9 @@ async def compile_batch(
             filenames = []
             for doc in docs:
                 try:
-                    reader = await open_pdf_reader(doc.stored_path)
+                    # Uploaded PDFs are included as-is — no Berton logo overlay.
+                    raw = await read_bytes(doc.stored_path)
+                    reader = PdfReader(BytesIO(raw))
                     for page in reader.pages:
                         pdf_writer.add_page(page)
                     total_pages += len(reader.pages)
@@ -219,18 +410,34 @@ def render_form_to_pdf(
 ) -> bytes | None:
     """Render a form to PDF using WeasyPrint."""
 
-    # Build context
+    # Build context — never pass None for dicts templates call .get() on.
+    # Partial runs often have FormInstance rows with header_payload NULL.
     header = batch.header
+    raw_header = (form_instance.header_payload if form_instance else None) or {}
+    if not isinstance(raw_header, dict):
+        raw_header = {}
+    readings = list(form_instance.readings) if form_instance else []
+    # Guard reading payloads for templates that call payload.get(...)
+    for reading in readings:
+        if getattr(reading, "payload", None) is None:
+            reading.payload = {}
+
+    form_name = FORM_NAMES.get(
+        form_template.form_type.value, form_template.form_type.value
+    )
+    # logo_src is a data URI computed once at module load (no path at render time).
     context = {
         "batch": batch,
         "header": header,
         "form_instance": form_instance,
         "form_template": form_template,
-        "form_name": FORM_NAMES.get(form_template.form_type.value, form_template.form_type.value),
-        "doc_number": form_template.doc_number,
-        "readings": form_instance.readings if form_instance else [],
-        "header_payload": form_instance.header_payload if form_instance else {},
+        "form_name": form_name,
+        "doc_number": form_template.doc_number or "",
+        "readings": readings,
+        "header_payload": raw_header,
         "orientation": orientation,
+        "logo_src": _LOGO_SRC,
+        "logo_data_uri": _LOGO_SRC,
         "now": datetime.now(),
     }
 
@@ -243,13 +450,16 @@ def render_form_to_pdf(
 
     html_content = template.render(**context)
 
-    # CSS for orientation
+    # Form HTML has no logo image. Engines ignore/mis-size CSS height and
+    # position:fixed paints over readings on page 2+. Logo is applied after
+    # render via apply_form_title_logo: page 1 only, exact mm height, top-right.
+    # Each form is its own PDF then merged — page 1 of that PDF = section title page.
     css_content = f"""
         @page {{
             size: A4 {orientation};
             margin: 1cm;
         }}
-        body {{
+        html, body {{
             font-family: Arial, sans-serif;
             font-size: 10pt;
         }}
@@ -265,44 +475,76 @@ def render_form_to_pdf(
         th {{
             background-color: #f0f0f0;
         }}
-        .header-box {{
-            border: 2px solid #000;
-            padding: 10px;
-            margin-bottom: 15px;
+        .header-box, .pdf-page-header {{
+            border: none;
+            border-bottom: 1.5pt solid #000;
+            padding: 2px 0 8px 0;
+            margin: 0 0 12px 0;
+            /* Leave clear top-right band for the page-1 logo stamp */
+            padding-right: 32mm;
+            min-height: 12mm;
         }}
         .form-title {{
-            font-size: 14pt;
+            font-size: 13pt;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin: 0 0 2px 0;
+            color: #000;
+            line-height: 1.2;
         }}
         .doc-number {{
             font-size: 9pt;
-            color: #666;
+            color: #444;
+            margin: 0;
+        }}
+        .pdf-brand-table {{
+            width: 100%;
+            border: none !important;
+            border-collapse: collapse;
+        }}
+        .pdf-brand-table td {{
+            border: none !important;
+            padding: 0 !important;
+            background: transparent !important;
+        }}
+        .pdf-brand-title-cell {{
+            width: 100%;
+            vertical-align: top;
+            text-align: left;
+        }}
+        /* Never emit a logo from HTML — size/placement is post-render only */
+        .page-logo, img.page-logo {{
+            display: none !important;
         }}
     """
 
     full_html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>{css_content}</style></head>
-<body>{html_content}</body></html>"""
+<body>
+{html_content}
+</body></html>"""
 
-    # Prefer WeasyPrint; fall back to xhtml2pdf (pure Python, works on Windows).
+    pdf_bytes: bytes | None = None
     try:
         from weasyprint import CSS, HTML
 
         html = HTML(string=full_html)
         css = CSS(string=css_content)
-        return html.write_pdf(stylesheets=[css])
+        pdf_bytes = html.write_pdf(stylesheets=[css])
     except (ImportError, OSError):
-        pass
+        pdf_bytes = None
 
-    try:
-        from xhtml2pdf import pisa
-    except ImportError as exc:
-        raise RuntimeError(
-            "PDF rendering unavailable. Install xhtml2pdf or WeasyPrint system libraries."
-        ) from exc
+    if pdf_bytes is None:
+        try:
+            from xhtml2pdf import pisa
+        except ImportError as exc:
+            raise RuntimeError(
+                "PDF rendering unavailable. Install xhtml2pdf or WeasyPrint system libraries."
+            ) from exc
 
-    buffer = BytesIO()
-    if pisa.CreatePDF(full_html, dest=buffer).err:
-        raise RuntimeError("PDF rendering failed while generating a form page.")
-    return buffer.getvalue()
+        buffer = BytesIO()
+        if pisa.CreatePDF(full_html, dest=buffer).err:
+            raise RuntimeError("PDF rendering failed while generating a form page.")
+        pdf_bytes = buffer.getvalue()
+
+    # Exact 10mm logo, top-right, title page only — never on continuation pages.
+    return apply_form_title_logo(pdf_bytes)

@@ -251,7 +251,9 @@ async def api_save_draft(
 
     batch = await get_open_batch(db, batch_id, role)
     action = str(body.get("action", "save"))
-    payload = build_form_payload_from_mapping(body, exclude={"action"})
+    payload = build_form_payload_from_mapping(
+        body, exclude={"action", "stock_codes_checked"}
+    )
 
     if form_type == "pick_list":
         lines = build_pick_list_lines(body)

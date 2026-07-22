@@ -18,9 +18,42 @@ def test_build_form_payload_handles_arrays():
     assert payload["empty"] is None
 
 
+def test_build_form_payload_multi_select_checkbox_keys():
+    payload = build_form_payload_from_mapping({
+        "filters_used[]": "45",
+        "correct_filters": "Y",
+    })
+    # Single pair only — multi values arrive as repeated keys or a list
+    assert payload["filters_used"] == ["45"]
+    assert payload["correct_filters"] == "Y"
+
+    payload2 = build_form_payload_from_mapping({
+        "filters_used": ["70", "45", "50"],
+        "correct_filters": "Y",
+    })
+    assert payload2["filters_used"] == ["70", "45", "50"]
+
+
+def test_normalize_multi_select_filters_used_orders_by_template():
+    from app.services.form_persistence import normalize_multi_select_enums
+
+    out = normalize_multi_select_enums(
+        "filler_line_check",
+        {"filters_used": ["70", "45"], "correct_filters": "Y"},
+    )
+    # Template order: 45, 65, 50, 70
+    assert out["filters_used"] == ["45", "70"]
+
+    legacy = normalize_multi_select_enums(
+        "filler_line_check",
+        {"filters_used": "65"},
+    )
+    assert legacy["filters_used"] == ["65"]
+
+
 def test_build_pick_list_lines():
     data = {
-        "lines_0_stock_item": "LFPRESSB25",
+        "lines_0_stock_item": "  LFPRESSB25  ",
         "lines_0_description": "Label",
         "lines_0_required": "126000",
         "lines_0_supplied_qty": "126200",

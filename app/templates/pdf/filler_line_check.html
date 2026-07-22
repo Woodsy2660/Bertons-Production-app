@@ -9,21 +9,7 @@
     </style>
 </head>
 <body>
-    <!-- Header Box -->
-    <div class="header-box">
-        <table style="border: none; width: 100%;">
-            <tr>
-                <td style="border: none; width: 70%;">
-                    <div class="form-title">Filler Line Check</div>
-                    <div class="doc-number">FOR PK 017A</div>
-                </td>
-                <td style="border: none; text-align: right;">
-                    <strong>BERTON VINEYARDS</strong><br>
-                    <span style="font-size: 9pt;">Packaging Documentation</span>
-                </td>
-            </tr>
-        </table>
-    </div>
+    {% include "_brand_header.html" %}
 
     <!-- Header Info -->
     <table style="margin-bottom: 15px;">
@@ -39,7 +25,7 @@
         </tr>
         <tr>
             <th>Filters Used</th>
-            <td colspan="3">{{ header_payload.get('filters_used', '-') }}</td>
+            <td colspan="3">{% set fu = header_payload.get('filters_used') %}{% if fu is string %}{{ fu or '-' }}{% elif fu is sequence %}{{ fu|join(', ') if fu else '-' }}{% else %}-{% endif %}</td>
             <th>Check Filtration?</th>
             <td colspan="3">{{ header_payload.get('check_filtration', '-') }}</td>
         </tr>

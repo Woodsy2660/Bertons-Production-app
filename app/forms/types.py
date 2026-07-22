@@ -43,6 +43,7 @@ class FieldDef:
     source: FieldSource
     multi_value_count: int | None = None  # For [×N] fields
     enum_values: list[str] | None = None  # For enum fields
+    multi_select: bool = False  # ENUM: allow multiple options (stored as list)
     required: bool = False
     barcode_scan: bool = False  # USB/camera barcode → prefill (lookup hook later)
 

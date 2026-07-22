@@ -1,0 +1,52 @@
+# VCS / tooling
+.git
+.github
+.venv
+venv
+ENV
+env
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.mypy_cache
+.ruff_cache
+.idea
+.vscode
+.uv
+.claude
+
+# Secrets
+.env
+.env.*
+!.env.example
+cookies.txt
+
+# Runtime data (not needed in image build context)
+uploads/*
+!uploads/.gitkeep
+compiled_output/*
+!compiled_output/.gitkeep
+pallet_tags/*
+!pallet_tags/.gitkeep
+
+# Docs, samples, brand sources, tests (not required at runtime)
+Documentation
+docs
+samples
+assets
+tests
+scripts/qa_*.py
+terminals
+mcps
+agent-tools
+_logo_verify
+
+# Local noise
+*.log
+openapi_live.json
+*.bat
+.start*

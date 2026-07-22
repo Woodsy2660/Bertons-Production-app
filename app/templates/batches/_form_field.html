@@ -8,6 +8,32 @@
 {% if readonly and display_value %}
 <input type="hidden" name="{{ field_name }}" value="{{ display_value }}">
 {% endif %}
+{% elif field.field_type.value == 'enum' and field.multi_select %}
+{# Multi-select enum → touch-friendly checkboxes; values stored as a list.
+   Build selected_list in one expression (Jinja block-scoped {% set %} is unreliable). #}
+{% set selected_list = (
+    [display_value|string] if (display_value is string and display_value)
+    else (display_value|map('string')|list if (display_value is sequence and display_value is not string and display_value is not mapping)
+    else [])
+) %}
+<div class="enum-multiselect" role="group" aria-labelledby="{{ field_id }}_label">
+    {% for val in field.enum_values %}
+    <label class="enum-multiselect-option touch-target">
+        <input type="checkbox"
+               id="{{ field_id }}_{{ loop.index }}"
+               name="{{ field_name }}[]"
+               value="{{ val }}"
+               {% if val|string in selected_list %}checked{% endif %}
+               {% if readonly %}disabled{% endif %}>
+        <span>{{ val }}</span>
+    </label>
+    {% endfor %}
+</div>
+{% if readonly and selected_list %}
+    {% for val in selected_list %}
+    <input type="hidden" name="{{ field_name }}[]" value="{{ val }}">
+    {% endfor %}
+{% endif %}
 {% elif field.field_type.value == 'enum' %}
 <select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target" {% if readonly %}disabled{% endif %}>
     <option value="">-- Select --</option>

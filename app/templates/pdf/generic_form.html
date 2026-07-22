@@ -5,23 +5,7 @@
     <title>{{ form_name }}</title>
 </head>
 <body>
-    <!-- Header Box -->
-    <div class="header-box">
-        <table style="border: none; width: 100%;">
-            <tr>
-                <td style="border: none; width: 70%;">
-                    <div class="form-title">{{ form_name }}</div>
-                    {% if doc_number %}
-                    <div class="doc-number">{{ doc_number }}</div>
-                    {% endif %}
-                </td>
-                <td style="border: none; text-align: right;">
-                    <strong>BERTON VINEYARDS</strong><br>
-                    <span style="font-size: 9pt;">Bottling Run Documentation</span>
-                </td>
-            </tr>
-        </table>
-    </div>
+    {% include "_brand_header.html" %}
 
     <!-- Batch Info -->
     <table style="margin-bottom: 15px;">

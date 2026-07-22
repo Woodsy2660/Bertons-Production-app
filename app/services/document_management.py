@@ -13,7 +13,11 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Batch, BatchHeader, DocumentSlot, UploadedDocument
 from app.services.storage import delete_stored_file, read_bytes, save_bytes
-from app.services.work_order_parser import filter_label_lines, parse_work_order_pdf
+from app.services.work_order_extraction import (
+    apply_extraction_to_header,
+    extract_work_order_from_bytes,
+)
+
 
 SINGLE_SLOT_TYPES = frozenset({DocumentSlot.WORK_ORDER, DocumentSlot.EZYWINE_LISTING})
 
@@ -22,19 +26,9 @@ async def remove_file_from_disk(stored_path: str | Path) -> None:
     await delete_stored_file(str(stored_path))
 
 
-def apply_parsed_header(header: BatchHeader, parsed: dict) -> None:
-    header.product = parsed.get("product")
-    header.stock_item = parsed.get("stock_item")
-    header.tank = parsed.get("tank")
-    header.run_date = parsed.get("run_date")
-    header.packing_unit = parsed.get("packing_unit")
-    header.packaging_line = parsed.get("packaging_line")
-    header.run_quantity = parsed.get("run_quantity")
-    header.pick_list_lines = filter_label_lines(parsed.get("pick_list_lines"))
-    if parsed.get("parse_note"):
-        header.extra = {"parse_note": parsed["parse_note"]}
-    elif header.extra and "parse_note" in header.extra:
-        header.extra = None
+def apply_parsed_header(header: BatchHeader, verbose: dict) -> None:
+    """Refresh stored extract and promoted columns; does not touch form instances."""
+    apply_extraction_to_header(header, verbose)
 
 
 async def resequence_label_references(db: AsyncSession, batch_id: uuid.UUID) -> None:
@@ -103,8 +97,8 @@ async def refresh_header_from_work_order(
         batch.header = BatchHeader(batch=batch)
         db.add(batch.header)
     content = await read_bytes(stored_path)
-    parsed = parse_work_order_pdf(content)
-    apply_parsed_header(batch.header, parsed)
+    verbose = extract_work_order_from_bytes(content)
+    apply_parsed_header(batch.header, verbose)
 
 
 def validate_pdf_upload(file: UploadFile) -> None:

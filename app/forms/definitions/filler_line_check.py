@@ -43,6 +43,7 @@ FILLER_LINE_CHECK_TEMPLATE = FormTemplate(
             field_type=FieldType.ENUM,
             source=FieldSource.OPERATOR,
             enum_values=["45", "65", "50", "70"],
+            multi_select=True,  # Operators can tick multiple filter sizes per run
         ),
         FieldDef(
             key="correct_filters",

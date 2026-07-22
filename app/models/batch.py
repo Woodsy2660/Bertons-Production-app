@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.form_instance import FormInstance
     from app.models.uploaded_document import UploadedDocument
     from app.models.compilation import Compilation
+    from app.models.pallet_tag_print import PalletTagPrint
 
 
 class BatchStatus(str, PyEnum):
@@ -64,6 +65,9 @@ class Batch(Base):
     compilations: Mapped[list["Compilation"]] = relationship(
         "Compilation", back_populates="batch", cascade="all, delete-orphan"
     )
+    pallet_tag_prints: Mapped[list["PalletTagPrint"]] = relationship(
+        "PalletTagPrint", back_populates="batch", cascade="all, delete-orphan"
+    )
 
 
 class BatchHeader(Base):
@@ -82,7 +86,22 @@ class BatchHeader(Base):
     packing_unit: Mapped[str | None] = mapped_column(String(100), nullable=True)
     packaging_line: Mapped[str | None] = mapped_column(String(50), nullable=True)
     run_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stock_alias: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    vessel_batch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cartons_per_pallet: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cartons_per_layer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pallet_layers: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    pallet_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    front_label_height: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    back_label_height: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    other_label_height: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    label_barcode: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    carton_print_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    carton_print_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    carton_print_line3: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bottle_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     pick_list_lines: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    work_order_extract: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships

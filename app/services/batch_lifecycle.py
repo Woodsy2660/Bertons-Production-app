@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -67,9 +67,14 @@ def can_upload_documents(batch: Batch, role: Role) -> bool:
 
 
 def can_compile(batch: Batch, role: Role) -> bool:
+    """Managers may compile any active run, including partially completed forms."""
     if role != "manager":
         return False
-    return batch.status in (BatchStatus.AWAITING_REVIEW, BatchStatus.REOPENED)
+    return batch.status in (
+        BatchStatus.IN_PROGRESS,
+        BatchStatus.AWAITING_REVIEW,
+        BatchStatus.REOPENED,
+    )
 
 
 def can_mark_ready(batch: Batch, role: Role) -> bool:
@@ -166,26 +171,23 @@ async def reopen_run(db: AsyncSession, batch: Batch) -> None:
 
 
 def operator_visibility_filter(settings: Settings, today: date | None = None):
-    """SQLAlchemy filter for operator run list scoping."""
+    """SQLAlchemy filter for operator run list scoping.
+
+    Active (non-complete) runs are not date-scoped so the operator dashboard stays
+    in sync with the manager view. Completed runs remain limited to a recent window.
+    """
     today = today or date.today()
     cutoff = today - timedelta(days=settings.operator_completed_run_days)
+    cutoff_dt = datetime.combine(cutoff, datetime.min.time())
 
     return or_(
-        and_(
-            Batch.status != BatchStatus.COMPLETE,
-            BatchHeader.run_date == today,
-        ),
+        Batch.status != BatchStatus.COMPLETE,
         and_(
             Batch.status == BatchStatus.COMPLETE,
             or_(
                 BatchHeader.run_date >= cutoff,
-                Batch.updated_at >= datetime.combine(cutoff, datetime.min.time()),
+                Batch.updated_at >= cutoff_dt,
             ),
-        ),
-        and_(
-            Batch.status != BatchStatus.COMPLETE,
-            BatchHeader.run_date.is_(None),
-            Batch.created_at >= datetime.combine(today, datetime.min.time()),
         ),
     )
 
@@ -199,7 +201,7 @@ async def list_batches_for_role(
     Return (all_batches, review_queue) for dashboard.
 
     Managers see all runs; review_queue is awaiting_review only.
-    Operators see today's runs plus recent complete runs.
+    Operators see all active runs plus recent complete runs.
     """
     base = (
         select(Batch)
@@ -226,4 +228,74 @@ async def list_batches_for_role(
         complete_ids = {b.id for b in complete[settings.operator_completed_run_limit:]}
         batches = [b for b in batches if b.id not in complete_ids]
 
-    return batches, []
+    # Operators also get a dedicated awaiting-review list (read-only queue).
+    review_queue = [b for b in batches if is_awaiting_review(b)]
+    return batches, review_queue
+
+async def search_completed_runs(
+    db: AsyncSession,
+    *,
+    q: str | None = None,
+    product: str | None = None,
+    stock_item: str | None = None,
+    run_date_from: date | None = None,
+    run_date_to: date | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[Batch], int]:
+    """Search COMPLETE runs for managers (history archive).
+
+    Free-text ``q`` matches run number, product, stock item, or tank (ILIKE).
+    Returns (page of batches with header loaded, total matching count).
+    """
+    filters = [Batch.status == BatchStatus.COMPLETE]
+
+    text = (q or "").strip()
+    if text:
+        pattern = f"%{text}%"
+        filters.append(
+            or_(
+                Batch.run_number.ilike(pattern),
+                BatchHeader.product.ilike(pattern),
+                BatchHeader.stock_item.ilike(pattern),
+                BatchHeader.tank.ilike(pattern),
+            )
+        )
+
+    product_f = (product or "").strip()
+    if product_f:
+        filters.append(BatchHeader.product.ilike(f"%{product_f}%"))
+
+    stock_f = (stock_item or "").strip()
+    if stock_f:
+        filters.append(BatchHeader.stock_item.ilike(f"%{stock_f}%"))
+
+    if run_date_from is not None:
+        filters.append(BatchHeader.run_date >= run_date_from)
+    if run_date_to is not None:
+        filters.append(BatchHeader.run_date <= run_date_to)
+
+    where_clause = and_(*filters)
+
+    count_stmt = (
+        select(func.count(Batch.id))
+        .select_from(Batch)
+        .join(BatchHeader, BatchHeader.batch_id == Batch.id, isouter=True)
+        .where(where_clause)
+    )
+    total = int((await db.execute(count_stmt)).scalar_one() or 0)
+
+    stmt = (
+        select(Batch)
+        .options(selectinload(Batch.header), selectinload(Batch.compilations))
+        .join(BatchHeader, BatchHeader.batch_id == Batch.id, isouter=True)
+        .where(where_clause)
+        .order_by(
+            BatchHeader.run_date.desc().nullslast(),
+            Batch.updated_at.desc(),
+        )
+        .offset(max(offset, 0))
+        .limit(max(1, min(limit, 200)))
+    )
+    rows = list((await db.execute(stmt)).scalars().unique().all())
+    return rows, total

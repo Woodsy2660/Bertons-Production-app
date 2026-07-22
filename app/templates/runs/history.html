@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Completed Run History - Berton Bottling{% endblock %}
+
+{% block content %}
+<div class="dashboard history-page">
+    <header class="dashboard-header flex flex-wrap items-center justify-between gap-4">
+        <div>
+            <p class="text-sm text-muted mb-1"><a href="/" class="text-primary underline">← Dashboard</a></p>
+            <h1 class="dashboard-title">Completed Run History</h1>
+            <p class="dashboard-subtitle">
+                Search archived complete runs by run number, product, stock code, tank, or date.
+            </p>
+        </div>
+    </header>
+
+    <form method="get" action="/runs/history" class="history-filters card-panel">
+        <div class="history-filters-grid">
+            <label class="history-field">
+                <span class="history-label">Search</span>
+                <input type="search" name="q" value="{{ q }}" placeholder="Run #, product, stock, tank…" class="history-input">
+            </label>
+            <label class="history-field">
+                <span class="history-label">Product</span>
+                <input type="text" name="product" value="{{ product }}" placeholder="Optional" class="history-input">
+            </label>
+            <label class="history-field">
+                <span class="history-label">Stock item</span>
+                <input type="text" name="stock_item" value="{{ stock_item }}" placeholder="Optional" class="history-input">
+            </label>
+            <label class="history-field">
+                <span class="history-label">Run date from</span>
+                <input type="date" name="date_from" value="{{ date_from }}" class="history-input">
+            </label>
+            <label class="history-field">
+                <span class="history-label">Run date to</span>
+                <input type="date" name="date_to" value="{{ date_to }}" class="history-input">
+            </label>
+        </div>
+        <div class="history-filters-actions">
+            <button type="submit" class="btn-primary">Search</button>
+            <a href="/runs/history" class="btn-secondary">Clear</a>
+            <span class="history-result-count">{{ total }} run{% if total != 1 %}s{% endif %}</span>
+        </div>
+    </form>
+
+    {% if batches %}
+    <div class="history-table-wrap">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Run</th>
+                    <th>Run date</th>
+                    <th>Product</th>
+                    <th>Stock</th>
+                    <th>Tank</th>
+                    <th>Compiled</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for batch in batches %}
+                <tr>
+                    <td class="history-run-num">{{ batch.run_number }}</td>
+                    <td>
+                        {% if batch.header and batch.header.run_date %}
+                        {{ batch.header.run_date.strftime('%d %b %Y') }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td>{{ batch.header.product if batch.header else '—' }}</td>
+                    <td class="font-mono text-sm">{{ batch.header.stock_item if batch.header else '—' }}</td>
+                    <td>{{ batch.header.tank if batch.header else '—' }}</td>
+                    <td>
+                        {% if batch.compilations and batch.compilations|length > 0 %}
+                            {% if batch.compilations[0].compiled_at %}
+                            {{ batch.compilations[0].compiled_at.strftime('%d %b %Y') }}
+                            {% else %}
+                            Yes
+                            {% endif %}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td class="history-actions">
+                        <a href="/batches/{{ batch.id }}" class="btn-secondary btn-sm">Open</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_pages > 1 %}
+    <nav class="history-pagination" aria-label="History pages">
+        {% if has_prev %}
+        <a class="btn-secondary btn-sm" href="{{ prev_url }}">Previous</a>
+        {% endif %}
+        <span class="history-page-label">Page {{ page }} of {{ total_pages }}</span>
+        {% if has_next %}
+        <a class="btn-secondary btn-sm" href="{{ next_url }}">Next</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="dashboard-empty">
+        <h2 class="dashboard-empty-title">No completed runs match</h2>
+        <p class="dashboard-empty-text">Try a broader search or clear filters.</p>
+        <a href="/runs/history" class="btn-primary">Clear filters</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

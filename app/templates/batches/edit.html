@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% from "batches/_reference_pdf.html" import reference_pdf_viewer, reference_pdf_preview_shell %}
+
+{% block title %}Edit Run {{ batch.run_number }} - Berton Bottling{% endblock %}
+{% block body_attrs %}data-batch-id="{{ batch.id }}" data-page-context="Run {{ batch.run_number }} · Edit"{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-8">
+        <a href="/batches/{{ batch.id }}" class="back-link">&larr; Back to Run</a>
+        <h1 class="text-2xl text-primary font-semibold mt-3">Edit Run {{ batch.run_number }}</h1>
+        <p class="text-muted mt-2">
+            Review uploaded documents, replace the work order, or update label references.
+        </p>
+    </div>
+
+    {% if error %}
+    <div class="berton-alert berton-alert-error mb-6">{{ error }}</div>
+    {% endif %}
+
+    <form id="edit-batch-form" action="/batches/{{ batch.id }}/edit" method="POST" enctype="multipart/form-data" class="space-y-8">
+
+        <div class="berton-card p-6">
+            <h2 class="text-lg text-primary font-semibold mb-2">Run Number</h2>
+            <p class="berton-hint mb-3">Run number is fixed after creation.</p>
+            <p class="text-2xl font-semibold text-center py-2">{{ batch.run_number }}</p>
+        </div>
+
+        <div class="berton-card p-6 space-y-4">
+            <div>
+                <h2 class="text-lg text-primary font-semibold">Work Order</h2>
+                <p class="berton-hint">Upload a new PDF below to replace the current work order.</p>
+            </div>
+
+            {% if work_order %}
+            <div class="reference-preview-column">
+                {{ reference_pdf_viewer(work_order, 'Current Work Order', 'work-order', true) }}
+            </div>
+            {% else %}
+            <p class="berton-hint">No work order on file. Upload one below.</p>
+            {% endif %}
+
+            <label for="work_order" class="upload-zone block" id="work-order-zone">
+                <input type="file" id="work_order" name="work_order" accept=".pdf"
+                       class="hidden" onchange="handleWorkOrderReplace(this)">
+                <p class="text-lg font-semibold">{% if work_order %}Replace work order PDF{% else %}Upload work order PDF{% endif %}</p>
+                <p class="berton-hint mt-1">Optional — leave unchanged if you only need to update labels</p>
+            </label>
+        </div>
+
+        <div class="berton-card p-6 space-y-4">
+            <div>
+                <h2 class="text-lg text-primary font-semibold">Label References</h2>
+                <p class="berton-hint">Remove existing labels or add new PDFs below.</p>
+            </div>
+
+            {% if label_references %}
+            <div class="space-y-6">
+                {% for doc in label_references %}
+                {% set label_title = 'Label Reference' ~ (' ' ~ loop.index if label_references|length > 1 else '') %}
+                <div class="edit-label-block">
+                    <label class="edit-label-remove flex items-center gap-2 mb-3">
+                        <input type="checkbox" name="remove_labels" value="{{ doc.id }}" class="touch-target">
+                        <span>Remove {{ label_title }}</span>
+                    </label>
+                    {{ reference_pdf_viewer(doc, label_title, 'label-reference', true) }}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="berton-hint">No label references uploaded yet.</p>
+            {% endif %}
+
+            <label for="label_references" class="upload-zone block" id="label-zone">
+                <input type="file" id="label_references" name="label_references" accept=".pdf" multiple
+                       class="hidden" onchange="handleLabelRefs(this)">
+                <p class="text-lg font-semibold">Add label reference PDFs</p>
+                <p class="berton-hint mt-1">You can select more than one file</p>
+            </label>
+            <ul id="label-list" class="mt-4 space-y-2 hidden"></ul>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-end pt-2">
+            <a href="/batches/{{ batch.id }}" class="btn-secondary text-center">Cancel</a>
+            <button type="submit" class="btn-primary text-xl px-10">Save Changes</button>
+        </div>
+    </form>
+</div>
+
+<div id="work-order-preview-wrap" class="reference-preview-column hidden mt-8">
+    {{ reference_pdf_preview_shell('Replacement Work Order Preview', 'work-order', 'work-order-preview-viewer') }}
+</div>
+<div id="label-previews-wrap" class="reference-preview-column hidden mt-8 space-y-6"></div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/js/reference-pdf-viewer.js"></script>
+<script type="module">
+import { mountViewerFromFile } from "/static/js/reference-pdf-viewer.js";
+
+async function mountPreview(viewerId, file, filename) {
+    const viewer = document.getElementById(viewerId);
+    if (!viewer) return;
+    viewer.dataset.mounted = "false";
+    viewer.querySelector(".reference-pdf-pages")?.replaceChildren();
+    const block = viewer.closest(".reference-doc-block");
+    const nameEl = block?.querySelector(".reference-pdf-preview-filename");
+    if (nameEl) nameEl.textContent = filename;
+    await mountViewerFromFile(file, viewer);
+}
+
+window.handleWorkOrderReplace = async function handleWorkOrderReplace(input) {
+    const previewWrap = document.getElementById("work-order-preview-wrap");
+    if (input.files && input.files[0]) {
+        previewWrap.classList.remove("hidden");
+        await mountPreview("work-order-preview-viewer", input.files[0], input.files[0].name);
+    } else {
+        previewWrap.classList.add("hidden");
+    }
+};
+
+window.handleLabelRefs = async function handleLabelRefs(input) {
+    const list = document.getElementById("label-list");
+    const previewsWrap = document.getElementById("label-previews-wrap");
+    const zone = document.getElementById("label-zone");
+    list.innerHTML = "";
+    previewsWrap.innerHTML = "";
+
+    if (input.files && input.files.length > 0) {
+        zone.classList.add("has-file");
+        list.classList.remove("hidden");
+        previewsWrap.classList.remove("hidden");
+
+        for (const [index, file] of [...input.files].entries()) {
+            const li = document.createElement("li");
+            li.className = "flex items-center gap-2 text-muted";
+            li.textContent = file.name;
+            list.appendChild(li);
+
+            const viewerId = `label-preview-viewer-${index}`;
+            const title = input.files.length > 1 ? `New Label Reference ${index + 1}` : "New Label Reference";
+            const block = document.createElement("div");
+            block.className = "reference-doc-block reference-doc-block--label-reference";
+            block.innerHTML = `
+                <div class="reference-doc-toolbar">
+                    <div class="reference-doc-heading">
+                        <h2 class="reference-doc-title">${title}</h2>
+                        <p class="reference-doc-filename reference-pdf-preview-filename">${file.name}</p>
+                    </div>
+                    <div class="reference-doc-actions">
+                        <div class="reference-pdf-zoom-controls" aria-label="Zoom controls">
+                            <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-out" title="Zoom out">−</button>
+                            <span class="reference-pdf-zoom-value">100%</span>
+                            <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-in" title="Zoom in">+</button>
+                            <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset" data-action="zoom-reset" title="Reset zoom">Fit</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="${viewerId}" class="reference-pdf-viewer reference-pdf-viewer--loading" data-reference-pdf-viewer data-initial-zoom="1">
+                    <p class="reference-pdf-status">Loading preview…</p>
+                    <div class="reference-pdf-pages"></div>
+                </div>
+            `;
+            previewsWrap.appendChild(block);
+            await mountPreview(viewerId, file, file.name);
+        }
+    } else {
+        zone.classList.remove("has-file");
+        list.classList.add("hidden");
+        previewsWrap.classList.add("hidden");
+    }
+};
+</script>
+{% endblock %}

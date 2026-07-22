@@ -43,7 +43,8 @@ PICK_LIST_TEMPLATE = FormTemplate(
             field_type=FieldType.NUMBER,
             source=FieldSource.INHERITED,
         ),
-        # Label lines from work order (L-prefix stock items); operator fills qty only
+        # Label lines from work order (L-prefix stock items). Stock code is editable
+        # if extraction is wrong; operator also fills qty supplied/returned.
         FieldDef(
             key="lines",
             label="Label Pick List Lines",

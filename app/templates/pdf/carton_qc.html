@@ -20,20 +20,7 @@
 <body>
     {% set sorted_readings = readings | sort(attribute='sequence') %}
 
-    <div class="header-box">
-        <table style="border: none; width: 100%;">
-            <tr>
-                <td style="border: none; width: 70%;">
-                    <div class="form-title">Carton Usage &amp; Quality Control</div>
-                    <div class="doc-number">FOR PK 018</div>
-                </td>
-                <td style="border: none; text-align: right;">
-                    <strong>BERTON VINEYARDS</strong><br>
-                    <span style="font-size: 9pt;">Packaging Documentation</span>
-                </td>
-            </tr>
-        </table>
-    </div>
+    {% include "_brand_header.html" %}
 
     <table style="margin-bottom: 12px;">
         <tr>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/css/berton.css">
+</head>
+<body class="pdf-standalone-page">
+    <div class="pdf-standalone-toolbar">
+        <a href="/uploads/{{ doc.id }}/view" target="_blank" rel="noopener" class="reference-doc-open">
+            Open raw PDF
+        </a>
+        <a href="/api/uploads/{{ doc.id }}/download" class="reference-doc-open">Download</a>
+    </div>
+    <div
+        class="reference-pdf-viewer reference-pdf-viewer--loading"
+        data-reference-pdf-viewer
+        data-pdf-url="/uploads/{{ doc.id }}/view"
+        data-fallback-url="/uploads/{{ doc.id }}/view"
+        data-initial-zoom="1"
+    >
+        <p class="reference-pdf-status">Loading document…</p>
+        <a class="reference-pdf-fallback-link" hidden target="_blank" rel="noopener">Open PDF directly</a>
+        <div class="reference-pdf-pages"></div>
+    </div>
+    <script type="module" src="/static/js/reference-pdf-viewer.js"></script>
+</body>
+</html>

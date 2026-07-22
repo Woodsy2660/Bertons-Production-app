@@ -29,36 +29,60 @@ env/
 # uv
 .uv/
 
-# IDE
+# IDE / editors
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.DS_Store
+Thumbs.db
 
-# Environment
+# Environment & secrets
 .env
 .env.local
 .env.*.local
+cookies.txt
+*.pem
+*.key
 
-# Uploads
+# Runtime data (keep directory via .gitkeep + README)
 uploads/*
 !uploads/.gitkeep
+!uploads/README.md
+compiled_output/*
+!compiled_output/.gitkeep
+!compiled_output/README.md
+pallet_tags/*
+!pallet_tags/.gitkeep
+!pallet_tags/README.md
 
-# Database
+# Local DB / cache
 *.db
 *.sqlite3
-
-# Logs
-*.log
-logs/
-
-# Testing
+.pytest_cache/
 .coverage
 htmlcov/
-.pytest_cache/
 .tox/
+.mypy_cache/
+.ruff_cache/
 
-# Build artifacts
-*.pyc
-*.pyo
+# Logs & temp
+*.log
+logs/
+tmp/
+temp/
+_logo_verify/
+agent-tools/
+terminals/
+mcps/
+
+# OS / tooling noise
+.claude/
+.vercel/
+
+# Test / agent dumps
+openapi_live.json
+qa_*_results.*
+*_results.txt
+*_results.md

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse, Response, JSONResponse
 from sqlalchemy import select, func
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.middleware.sessions import SessionMiddleware
@@ -17,17 +18,30 @@ from app.auth.dependencies import (
     PUBLIC_PATHS,
     Role,
     get_current_role,
+    require_dev_tools,
     require_manager,
     require_operator_or_manager,
 )
 from app.auth.session import clear_session, get_role_from_session, set_role_in_session
 from app.config import get_settings
 from app.database import get_db
+from app.db_health import check_db_connection, is_db_connection_error
 from app.api import api_router
 from app.models import (
     Batch, BatchHeader, FormInstance, Reading, UploadedDocument,
     Compilation, BatchStatus, FormStatus, FormType as ModelFormType,
-    AccrualMode as ModelAccrualMode, DocumentSlot
+    AccrualMode as ModelAccrualMode, DocumentSlot, PalletTagPrint,
+    FeedbackReportType,
+)
+from app.services.feedback import (
+    FeedbackValidationError,
+    create_feedback_report,
+    format_sydney,
+    list_feedback_reports,
+    parse_optional_batch_id,
+    parse_report_type,
+    safe_return_path,
+    summarize_user_agent,
 )
 from app.forms import FormType, AccrualMode, FORM_TEMPLATES, get_form_template
 from app.services.batch_lifecycle import (
@@ -36,7 +50,6 @@ from app.services.batch_lifecycle import (
     assert_can_upload,
     assert_can_write_forms,
     can_compile,
-    can_mark_ready,
     can_reopen,
     can_upload_documents,
     can_write_forms,
@@ -44,6 +57,7 @@ from app.services.batch_lifecycle import (
     list_batches_for_role,
     mark_complete,
     reopen_run,
+    search_completed_runs,
 )
 from app.services.document_management import (
     clear_single_slot_documents,
@@ -63,7 +77,15 @@ from app.services.form_persistence import (
     submit_accrual_form,
 )
 from app.services.storage import build_upload_path, read_bytes, save_bytes
-from app.services.work_order_parser import parse_work_order_pdf, filter_label_lines
+from app.services.form_prefill import build_form_context, extract_packing_size
+from app.services.pallet_tags import calculate_pallets, record_pallet_tag_print, total_tags_printed
+from app.services.work_order_extraction import populate_header_from_work_order_pdf
+from app.services.work_order_parser import (
+    compute_pallet_count,
+    filter_label_lines,
+    parse_work_order_pdf,
+    parse_work_order_pdf_verbose,
+)
 
 settings = get_settings()
 
@@ -95,10 +117,11 @@ async def auth_middleware(request: Request, call_next):
 
 # Register after auth middleware so SessionMiddleware wraps it on the outside
 # (Starlette reverses middleware order when building the ASGI app).
+# cookie_https_only is False for LAN HTTP (Docker VM tablets); True on Vercel/TLS.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
-    https_only=settings.is_production,
+    https_only=settings.cookie_https_only,
     same_site="lax",
 )
 
@@ -112,7 +135,41 @@ app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_path))
 templates.env.globals["debug"] = settings.debug
+templates.env.globals["enable_dev_tools"] = settings.enable_dev_tools
 templates.env.globals["get_role"] = lambda request: get_role_from_session(request.session)
+templates.env.globals["format_sydney"] = format_sydney
+
+
+def _database_unavailable_response(request: Request) -> Response:
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Database unavailable. Ensure Postgres is running (docker compose up -d).",
+            },
+        )
+    return templates.TemplateResponse(
+        request,
+        "errors/database_unavailable.html",
+        status_code=503,
+    )
+
+
+@app.exception_handler(OperationalError)
+@app.exception_handler(InterfaceError)
+async def database_operational_error_handler(
+    request: Request,
+    exc: OperationalError | InterfaceError,
+) -> Response:
+    return _database_unavailable_response(request)
+
+
+@app.exception_handler(OSError)
+async def database_connection_os_error_handler(request: Request, exc: OSError) -> Response:
+    if not is_db_connection_error(exc):
+        raise exc
+    return _database_unavailable_response(request)
+
 
 # Ensure upload directory exists
 upload_path = Path(settings.upload_dir)
@@ -122,23 +179,36 @@ Path(settings.compiled_output_dir).mkdir(parents=True, exist_ok=True)
 # Include API routes
 app.include_router(api_router, prefix="/api")
 
-def build_inherited_values(batch: Batch) -> dict:
-    """Build inherited field values from batch header for form pre-fill."""
-    header = batch.header
-    return {
-        "date": header.run_date.isoformat() if header and header.run_date else "",
-        "run_number": batch.run_number,
-        "product": (header.product if header else "") or "",
-        "wine": (header.product if header else "") or "",
-        "tank": (header.tank if header else "") or "",
-        "stock_item": (header.stock_item if header else "") or "",
-        "packing_unit": (header.packing_unit if header else "") or "",
-        "packaging_line": (header.packaging_line if header else "") or "",
-        "run_date": header.run_date.isoformat() if header and header.run_date else "",
-        "run_quantity": header.run_quantity if header else "",
-        "description": (header.product if header else "") or "",
-    }
 
+@app.get("/dev/work-order-parser")
+async def dev_work_order_parser_page(
+    request: Request,
+    role: Annotated[Role, Depends(require_dev_tools)],
+):
+    """Dev/QA page to validate work order PDF extraction field-by-field."""
+    return templates.TemplateResponse(
+        request,
+        "dev/work_order_parser.html",
+        {"role": role},
+    )
+
+
+@app.post("/dev/work-order-parser/parse")
+async def dev_work_order_parser_parse(
+    role: Annotated[Role, Depends(require_dev_tools)],
+    work_order: UploadFile = File(...),
+):
+    """Parse an uploaded work order PDF and return verbose extraction JSON."""
+    validate_pdf_upload(work_order)
+    content = await work_order.read()
+    result = parse_work_order_pdf_verbose(content)
+    compatible = parse_work_order_pdf(content)
+    result["compatible"] = compatible
+    result["pallet_count"] = compute_pallet_count(
+        compatible.get("run_quantity"),
+        compatible.get("cartons_per_pallet"),
+    )
+    return JSONResponse(content=result)
 
 def build_form_defaults(form_type: str) -> dict:
     """Operator-entered defaults (e.g. today's date on daily production)."""
@@ -247,6 +317,113 @@ async def logout(request: Request):
     return RedirectResponse(url="/login", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Feedback / bug reporting
+# ---------------------------------------------------------------------------
+
+
+@app.post("/feedback")
+async def submit_feedback(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    report_type: str = Form(...),
+    description: str = Form(...),
+    source_path: str = Form(""),
+    page_context: str = Form(""),
+    batch_id: str = Form(""),
+    return_to: str = Form(""),
+):
+    """Accept a feedback report from operator or manager. Role from session only."""
+    from urllib.parse import urlparse
+
+    dest = safe_return_path(return_to, fallback="")
+    if not dest:
+        ref = request.headers.get("referer") or ""
+        parsed = urlparse(ref)
+        dest = safe_return_path(
+            parsed.path + (f"?{parsed.query}" if parsed.query else ""),
+            fallback="/",
+        )
+
+    try:
+        await create_feedback_report(
+            db,
+            report_type=report_type,
+            description=description,
+            submitted_role=role,  # session only — never form field
+            source_path=source_path or dest,
+            page_context=page_context or None,
+            batch_id=parse_optional_batch_id(batch_id),
+            user_agent=request.headers.get("user-agent", ""),
+        )
+    except FeedbackValidationError:
+        sep = "&" if "?" in dest else "?"
+        return RedirectResponse(url=f"{dest}{sep}feedback=error", status_code=303)
+
+    sep = "&" if "?" in dest else "?"
+    return RedirectResponse(url=f"{dest}{sep}feedback=ok", status_code=303)
+
+
+@app.get("/feedback")
+async def feedback_list(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+    type: str = "",
+):
+    """Manager-only read-only review of feedback reports (newest first)."""
+    filter_type: FeedbackReportType | None = None
+    if type and type.strip():
+        try:
+            filter_type = parse_report_type(type)
+        except FeedbackValidationError:
+            filter_type = None
+
+    reports = await list_feedback_reports(db, report_type=filter_type)
+
+    rows = []
+    for r in reports:
+        run_number = None
+        if r.batch is not None:
+            run_number = r.batch.run_number
+        rows.append(
+            {
+                "id": r.id,
+                "report_type": r.report_type,
+                "report_type_label": r.report_type.value.replace("_", " ").title(),
+                "description": r.description,
+                "submitted_role": r.submitted_role,
+                "source_path": r.source_path,
+                "page_context": r.page_context,
+                "batch_id": r.batch_id,
+                "run_number": run_number,
+                "device": summarize_user_agent(r.user_agent),
+                "submitted_at_sydney": format_sydney(r.submitted_at),
+            }
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "feedback/list.html",
+        {
+            "role": role,
+            "rows": rows,
+            "filter_type": filter_type.value if filter_type else "",
+            "type_options": [
+                ("", "All types"),
+                ("bug", "Bug"),
+                ("data_change", "Data field change"),
+                ("suggestion", "Suggestion"),
+            ],
+        },
+    )
+
+
+# How many completed runs to show on the home dashboard (managers).
+DASHBOARD_COMPLETE_PREVIEW = 10
+
+
 @app.get("/")
 async def index(
     request: Request,
@@ -260,7 +437,41 @@ async def index(
         b for b in batches
         if b.status != BatchStatus.COMPLETE and b.id not in review_ids
     ]
-    complete_batches = [b for b in batches if b.status == BatchStatus.COMPLETE]
+    # Leftmost first: in-progress before reopened, then earliest run_date;
+    # missing run dates last. Stable tie-break by created_at.
+    def _active_sort_key(b):
+        status = b.status.value if b.status else ""
+        # 0 = in progress (and other active), 1 = reopened
+        status_rank = 1 if status == "reopened" else 0
+        missing_date = b.header.run_date is None if b.header else True
+        run_date = (
+            b.header.run_date
+            if b.header and b.header.run_date
+            else date.max
+        )
+        return (status_rank, missing_date, run_date, b.created_at or datetime.min)
+
+    active_batches.sort(key=_active_sort_key)
+    # Review queue: same urgency ordering by run date
+    review_queue = sorted(
+        review_queue,
+        key=lambda b: (
+            b.header.run_date is None if b.header else True,
+            b.header.run_date if b.header and b.header.run_date else date.max,
+            b.created_at or datetime.min,
+        ),
+    )
+    all_complete = [b for b in batches if b.status == BatchStatus.COMPLETE]
+    # Managers: short preview + dedicated history search for the full archive.
+    if role == "manager":
+        complete_batches = all_complete[:DASHBOARD_COMPLETE_PREVIEW]
+        complete_total = len(all_complete)
+        # True total may exceed list limit; history page has full search.
+        complete_has_more = complete_total >= DASHBOARD_COMPLETE_PREVIEW
+    else:
+        complete_batches = all_complete
+        complete_total = len(all_complete)
+        complete_has_more = False
 
     return templates.TemplateResponse(
         request,
@@ -268,6 +479,8 @@ async def index(
         {
             "active_batches": active_batches,
             "complete_batches": complete_batches,
+            "complete_total": complete_total,
+            "complete_has_more": complete_has_more,
             "review_queue": review_queue,
             "role": role,
             "review_count": len(review_queue),
@@ -275,10 +488,113 @@ async def index(
     )
 
 
+def _parse_optional_date(raw: str | None) -> date | None:
+    if not raw or not str(raw).strip():
+        return None
+    try:
+        return date.fromisoformat(str(raw).strip())
+    except ValueError:
+        return None
+
+
+@app.get("/runs/history")
+async def completed_runs_history(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+    q: str = "",
+    product: str = "",
+    stock_item: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    page: int = 1,
+):
+    """Manager archive: search and browse all COMPLETE runs."""
+    page_size = 25
+    page = max(1, page)
+    offset = (page - 1) * page_size
+    run_date_from = _parse_optional_date(date_from)
+    run_date_to = _parse_optional_date(date_to)
+
+    batches, total = await search_completed_runs(
+        db,
+        q=q or None,
+        product=product or None,
+        stock_item=stock_item or None,
+        run_date_from=run_date_from,
+        run_date_to=run_date_to,
+        limit=page_size,
+        offset=offset,
+    )
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+
+    from urllib.parse import urlencode
+
+    filter_params = {
+        "q": q or "",
+        "product": product or "",
+        "stock_item": stock_item or "",
+        "date_from": date_from or "",
+        "date_to": date_to or "",
+    }
+    # Drop empty filters for cleaner pagination URLs
+    filter_params = {k: v for k, v in filter_params.items() if v}
+
+    def page_url(p: int) -> str:
+        params = {**filter_params, "page": str(p)}
+        return "/runs/history?" + urlencode(params)
+
+    return templates.TemplateResponse(
+        request,
+        "runs/history.html",
+        {
+            "role": role,
+            "batches": batches,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "q": q or "",
+            "product": product or "",
+            "stock_item": stock_item or "",
+            "date_from": date_from or "",
+            "date_to": date_to or "",
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_url": page_url(page - 1) if page > 1 else "",
+            "next_url": page_url(page + 1) if page < total_pages else "",
+        },
+    )
+
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Liveness probe — process is up (does not check the database)."""
+    return {
+        "status": "healthy",
+        "version": settings.app_version,
+    }
+
+
+@app.get("/ready")
+async def readiness_check():
+    """Readiness probe — confirms PostgreSQL is reachable."""
+    if await check_db_connection():
+        return {
+            "status": "ready",
+            "database": "connected",
+            "version": settings.app_version,
+        }
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "not_ready",
+            "database": "unavailable",
+            "hint": "Ensure the database service is running and DATABASE_URL is correct.",
+        },
+    )
 
 
 # ============== BATCH ROUTES ==============
@@ -347,18 +663,10 @@ async def create_batch(
     )
     db.add(work_order_doc)
 
-    parsed = parse_work_order_pdf(await read_bytes(work_order_doc.stored_path))
-    header = BatchHeader(
-        batch=batch,
-        product=parsed.get("product"),
-        stock_item=parsed.get("stock_item"),
-        tank=parsed.get("tank"),
-        run_date=parsed.get("run_date"),
-        packing_unit=parsed.get("packing_unit"),
-        packaging_line=parsed.get("packaging_line"),
-        run_quantity=parsed.get("run_quantity"),
-        pick_list_lines=filter_label_lines(parsed.get("pick_list_lines")),
-        extra={"parse_note": parsed.get("parse_note")} if parsed.get("parse_note") else None,
+    header = BatchHeader(batch=batch)
+    populate_header_from_work_order_pdf(
+        header,
+        await read_bytes(work_order_doc.stored_path),
     )
     db.add(header)
 
@@ -377,6 +685,143 @@ async def create_batch(
     return RedirectResponse(url=f"/batches/{batch.id}", status_code=303)
 
 
+async def _batch_documents(
+    db: AsyncSession,
+    batch_id: uuid.UUID,
+) -> tuple[Batch, UploadedDocument | None, list[UploadedDocument]]:
+    result = await db.execute(
+        select(Batch)
+        .options(
+            selectinload(Batch.header),
+            selectinload(Batch.uploaded_documents),
+        )
+        .where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    work_order = next(
+        (d for d in batch.uploaded_documents if d.slot == DocumentSlot.WORK_ORDER),
+        None,
+    )
+    label_references = sorted(
+        [d for d in batch.uploaded_documents if d.slot == DocumentSlot.LABEL_REFERENCE],
+        key=lambda d: d.sequence,
+    )
+    return batch, work_order, label_references
+
+
+@app.get("/batches/{batch_id}/edit")
+async def edit_batch_form(
+    request: Request,
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+):
+    """Manager page to review and update run documents."""
+    batch, work_order, label_references = await _batch_documents(db, batch_id)
+    assert_can_upload(batch, role)
+    return templates.TemplateResponse(
+        request,
+        "batches/edit.html",
+        {
+            "batch": batch,
+            "work_order": work_order,
+            "label_references": label_references,
+            "role": role,
+        },
+    )
+
+
+@app.post("/batches/{batch_id}/edit")
+async def edit_batch_submit(
+    request: Request,
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_manager)],
+    work_order: UploadFile | None = File(default=None),
+    label_references: list[UploadFile] = File(default=[]),
+    remove_labels: list[str] = Form(default=[]),
+):
+    """Replace work order and/or update label references for an existing run."""
+    batch, existing_work_order, _ = await _batch_documents(db, batch_id)
+    assert_can_upload(batch, role)
+
+    for raw_id in remove_labels:
+        try:
+            doc_id = uuid.UUID(raw_id)
+        except ValueError:
+            continue
+        try:
+            _, doc = await get_batch_document(db, batch_id, doc_id)
+        except ValueError:
+            continue
+        if doc.slot != DocumentSlot.LABEL_REFERENCE:
+            continue
+        await delete_uploaded_document(db, doc)
+
+    if work_order and work_order.filename:
+        try:
+            validate_pdf_upload(work_order)
+        except ValueError as exc:
+            _, _, label_references = await _batch_documents(db, batch_id)
+            return templates.TemplateResponse(
+                request,
+                "batches/edit.html",
+                {
+                    "batch": batch,
+                    "work_order": existing_work_order,
+                    "label_references": label_references,
+                    "role": role,
+                    "error": str(exc),
+                },
+                status_code=400,
+            )
+        await clear_single_slot_documents(db, batch_id, DocumentSlot.WORK_ORDER)
+        doc = await save_uploaded_file(batch_id, DocumentSlot.WORK_ORDER, work_order)
+        db.add(doc)
+        await refresh_header_from_work_order(db, batch, doc.stored_path)
+
+    count_result = await db.execute(
+        select(func.count(UploadedDocument.id))
+        .where(UploadedDocument.batch_id == batch_id)
+        .where(UploadedDocument.slot == DocumentSlot.LABEL_REFERENCE)
+    )
+    next_label_sequence = count_result.scalar_one() or 0
+    for label_file in label_references:
+        if not label_file.filename:
+            continue
+        if not label_file.filename.lower().endswith(".pdf"):
+            continue
+        label_doc = await save_uploaded_file(
+            batch_id,
+            DocumentSlot.LABEL_REFERENCE,
+            label_file,
+            sequence=next_label_sequence,
+        )
+        db.add(label_doc)
+        next_label_sequence += 1
+
+    refreshed_batch, work_order_after, _ = await _batch_documents(db, batch_id)
+    if not work_order_after:
+        _, _, label_references = await _batch_documents(db, batch_id)
+        return templates.TemplateResponse(
+            request,
+            "batches/edit.html",
+            {
+                "batch": refreshed_batch,
+                "work_order": None,
+                "label_references": label_references,
+                "role": role,
+                "error": "A work order PDF is required for every run.",
+            },
+            status_code=400,
+        )
+
+    await db.commit()
+    return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
+
+
 @app.get("/batches/{batch_id}")
 async def batch_detail(
     request: Request,
@@ -392,6 +837,7 @@ async def batch_detail(
             selectinload(Batch.uploaded_documents),
             selectinload(Batch.form_instances).selectinload(FormInstance.readings),
             selectinload(Batch.compilations),
+            selectinload(Batch.pallet_tag_prints),
         )
         .where(Batch.id == batch_id)
     )
@@ -435,6 +881,12 @@ async def batch_detail(
         None,
     )
 
+    pending_forms = [
+        info["label"]
+        for info in form_status.values()
+        if info["status"] != "submitted"
+    ]
+
     return templates.TemplateResponse(
         request,
         "batches/detail.html",
@@ -451,9 +903,112 @@ async def batch_detail(
             "is_greyed": is_greyed_out(batch),
             "can_edit_forms": can_write_forms(batch, role),
             "can_manage_documents": can_upload_documents(batch, role),
-            "can_mark_ready": can_mark_ready(batch, role),
             "can_reopen": can_reopen(batch, role),
+            "can_print_pallet_tags": work_order is not None,
+            "pallet_calc": calculate_pallets(batch),
+            "tags_printed_total": sum(p.tags_printed for p in batch.pallet_tag_prints),
+            "pending_forms": pending_forms,
         },
+    )
+
+
+@app.get("/batches/{batch_id}/pallet-tags")
+async def pallet_tags_page(
+    request: Request,
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    result = await db.execute(
+        select(Batch)
+        .options(
+            selectinload(Batch.header),
+            selectinload(Batch.uploaded_documents),
+            selectinload(Batch.pallet_tag_prints),
+        )
+        .where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    work_order = next(
+        (d for d in batch.uploaded_documents if d.slot == DocumentSlot.WORK_ORDER),
+        None,
+    )
+    if not work_order:
+        raise HTTPException(status_code=400, detail="Upload a work order before printing pallet tags.")
+
+    calc = calculate_pallets(batch)
+    tags_printed_total = await total_tags_printed(db, batch.id)
+    header = batch.header
+    return templates.TemplateResponse(
+        request,
+        "batches/pallet_tags.html",
+        {
+            "batch": batch,
+            "role": role,
+            "calc": calc,
+            "tags_printed_total": tags_printed_total,
+            "size": extract_packing_size(header.packing_unit if header else None),
+            "print_history": sorted(batch.pallet_tag_prints, key=lambda p: p.printed_at, reverse=True),
+        },
+    )
+
+
+@app.post("/batches/{batch_id}/pallet-tags/print")
+async def pallet_tags_print(
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    tags_to_print: int = Form(...),
+    note: str = Form(""),
+):
+    result = await db.execute(
+        select(Batch)
+        .options(selectinload(Batch.header), selectinload(Batch.uploaded_documents))
+        .where(Batch.id == batch_id)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if tags_to_print < 1:
+        raise HTTPException(status_code=400, detail="Tags to print must be at least 1.")
+
+    print_row, _, print_result = await record_pallet_tag_print(
+        db,
+        batch,
+        tags_to_print=tags_to_print,
+        printed_by=role.title(),
+        dispatch_method="browser",
+        note=note or None,
+    )
+    await db.commit()
+    return RedirectResponse(
+        url=f"/batches/{batch_id}/pallet-tags/pdf/{print_row.id}?autoprint=1",
+        status_code=303,
+    )
+
+
+@app.get("/batches/{batch_id}/pallet-tags/pdf/{print_id}")
+async def pallet_tags_pdf(
+    batch_id: uuid.UUID,
+    print_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    result = await db.execute(
+        select(PalletTagPrint)
+        .where(PalletTagPrint.id == print_id)
+        .where(PalletTagPrint.batch_id == batch_id)
+    )
+    print_row = result.scalar_one_or_none()
+    if not print_row or not print_row.stored_path:
+        raise HTTPException(status_code=404, detail="Tag PDF not found")
+    content = await read_bytes(print_row.stored_path)
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="pallet_tags.pdf"'},
     )
 
 
@@ -468,8 +1023,8 @@ async def mark_ready(
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if not can_mark_ready(batch, role):
-        raise HTTPException(status_code=400, detail="Run is not ready for review completion")
+    if not can_compile(batch, role):
+        raise HTTPException(status_code=400, detail="Completion is not available for this run")
 
     return RedirectResponse(url=f"/batches/{batch_id}/complete", status_code=303)
 
@@ -488,6 +1043,7 @@ async def completion_page(
             selectinload(Batch.header),
             selectinload(Batch.uploaded_documents),
             selectinload(Batch.compilations),
+            selectinload(Batch.form_instances),
         )
         .where(Batch.id == batch_id)
     )
@@ -496,6 +1052,18 @@ async def completion_page(
         raise HTTPException(status_code=404, detail="Batch not found")
     if not can_compile(batch, role):
         raise HTTPException(status_code=400, detail="Completion is not available for this run")
+
+    pending_forms = [
+        FORM_DISPLAY_NAMES.get(fi.form_type.value, fi.form_type.value)
+        for fi in batch.form_instances
+        if fi.status != FormStatus.SUBMITTED
+    ]
+    missing_forms = [
+        FORM_DISPLAY_NAMES.get(ft.value, ft.value)
+        for ft in FormType
+        if ft.value not in {fi.form_type.value for fi in batch.form_instances}
+    ]
+    pending_forms = sorted(set(pending_forms + missing_forms))
 
     ezywine_listing = next(
         (d for d in batch.uploaded_documents if d.slot == DocumentSlot.EZYWINE_LISTING),
@@ -521,6 +1089,7 @@ async def completion_page(
             "can_manage_documents": can_upload_documents(batch, role),
             "is_recompile": batch.status == BatchStatus.REOPENED,
             "compile_error": compile_error,
+            "pending_forms": pending_forms,
         },
     )
 
@@ -679,7 +1248,10 @@ async def form_view(
     )
     form_instance = fi_result.scalar_one_or_none()
 
-    inherited_values = build_inherited_values(batch)
+    form_context = build_form_context(batch, form_type, form_instance)
+    inherited_values = form_context["prefill_values"]
+    prefill_flags = form_context["prefill_flags"]
+    reference_values = form_context["reference_values"]
     form_defaults = build_form_defaults(form_type)
 
     pick_list_lines: list = []
@@ -687,16 +1259,6 @@ async def form_view(
         pick_list_lines = filter_label_lines(form_instance.header_payload["lines"])
     elif batch.header and batch.header.pick_list_lines:
         pick_list_lines = filter_label_lines(batch.header.pick_list_lines)
-    elif form_type == "pick_list":
-        wo_result = await db.execute(
-            select(UploadedDocument)
-            .where(UploadedDocument.batch_id == batch_id)
-            .where(UploadedDocument.slot == DocumentSlot.WORK_ORDER)
-        )
-        work_order_doc = wo_result.scalar_one_or_none()
-        if work_order_doc:
-            parsed = parse_work_order_pdf(await read_bytes(work_order_doc.stored_path))
-            pick_list_lines = filter_label_lines(parsed.get("pick_list_lines") or [])
 
     form_readonly = not can_write_forms(batch, role)
     delete_error = request.query_params.get("error")
@@ -710,6 +1272,8 @@ async def form_view(
             "form_instance": form_instance,
             "readings": sorted(form_instance.readings, key=lambda r: r.sequence) if form_instance else [],
             "inherited_values": inherited_values,
+            "prefill_flags": prefill_flags,
+            "reference_values": reference_values,
             "form_defaults": form_defaults,
             "pick_list_lines": pick_list_lines,
             "now": datetime.now(),
@@ -794,7 +1358,9 @@ async def save_atomic_form(
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown form type")
 
-    payload = build_form_payload(form_data, exclude={"action"})
+    payload = build_form_payload(
+        form_data, exclude={"action", "stock_codes_checked"}
+    )
 
     if form_type == "pick_list":
         lines = build_pick_list_lines(dict(form_data))
@@ -975,7 +1541,25 @@ async def compile_batch_route(
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_manager)],
 ):
-    """Compile batch into PDF and mark run complete."""
+    """Compile batch into PDF and mark run complete.
+
+    Serialises compile per batch (FOR UPDATE) so concurrent compiles cannot
+    create two is_current=true rows (TEST-C2 / QA-002).
+    """
+    # Lock the batch row first so concurrent compile attempts queue.
+    lock_result = await db.execute(
+        select(Batch).where(Batch.id == batch_id).with_for_update()
+    )
+    locked = lock_result.scalar_one_or_none()
+    if not locked:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    if locked.status == BatchStatus.COMPLETE:
+        raise HTTPException(
+            status_code=409,
+            detail="This run is already complete and has a current compilation",
+        )
+
     result = await db.execute(
         select(Batch)
         .options(
@@ -986,9 +1570,7 @@ async def compile_batch_route(
         )
         .where(Batch.id == batch_id)
     )
-    batch = result.scalar_one_or_none()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = result.scalar_one()
     assert_can_compile(batch, role)
 
     ezywine = next(
@@ -1004,6 +1586,7 @@ async def compile_batch_route(
     for comp in batch.compilations:
         if comp.is_current:
             comp.is_current = False
+    await db.flush()
 
     try:
         compilation = await compile_batch(
@@ -1020,12 +1603,20 @@ async def compile_batch_route(
         await db.rollback()
         from urllib.parse import quote
 
+        # Unique-index violation on concurrent current compilation → clean 409
+        msg = str(e)
+        if "uq_compilations_one_current_per_batch" in msg or "UniqueViolation" in type(e).__name__:
+            raise HTTPException(
+                status_code=409,
+                detail="Another compile finished first for this run",
+            ) from e
+
         return RedirectResponse(
-            url=f"/batches/{batch_id}/complete?error={quote(str(e)[:500])}",
+            url=f"/batches/{batch_id}/complete?error={quote(msg[:500])}",
             status_code=303,
         )
 
-    return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
+    return RedirectResponse(url=f"/batches/{batch_id}#run-completion", status_code=303)
 
 
 @app.post("/batches/{batch_id}/reopen")
@@ -1064,11 +1655,44 @@ async def view_upload(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    content = await read_bytes(doc.stored_path)
+    try:
+        content = await read_bytes(doc.stored_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "PDF file is missing on disk (database still has the upload record). "
+                "Re-upload the document, or run: python scripts/restore_missing_uploads.py"
+            ),
+        ) from exc
     return Response(
         content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
+    )
+
+
+@app.get("/uploads/{doc_id}/page")
+async def view_upload_page(
+    request: Request,
+    doc_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Standalone full-page PDF viewer (no app chrome)."""
+    result = await db.execute(
+        select(UploadedDocument).where(UploadedDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return templates.TemplateResponse(
+        request,
+        "documents/standalone.html",
+        {
+            "doc": doc,
+            "title": doc.original_filename,
+        },
     )
 
 
@@ -1085,7 +1709,16 @@ async def download_upload(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    content = await read_bytes(doc.stored_path)
+    try:
+        content = await read_bytes(doc.stored_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "PDF file is missing on disk (database still has the upload record). "
+                "Re-upload the document, or run: python scripts/restore_missing_uploads.py"
+            ),
+        ) from exc
     return Response(
         content=content,
         media_type="application/pdf",
