@@ -1,15 +1,11 @@
 # Full stack for production (BV-AZ-DockerHost01) and local container runs.
 #
-# Local app-on-host (current dev flow):
+# Production VM (after git pull):
+#   sudo docker compose up -d --build
+#
+# Local app-on-host (dev):
 #   docker compose up -d db
 #   python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
-#
-# Full stack (app + db in Docker — matches winery VM):
-#   docker compose --profile full up -d --build
-#
-# Production VM: copy .env, then:
-#   docker compose --profile full up -d --build
-#   (or use scripts/deploy.sh)
 
 services:
   db:
@@ -19,9 +15,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-berton}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-berton_dev}
       POSTGRES_DB: ${POSTGRES_DB:-berton_bottling}
-    # Dev default: host can reach Postgres on 5433. Prod: set POSTGRES_PUBLISH_PORT=
-    # empty or bind loopback only via override if needed.
     ports:
+      # Host can reach Postgres on 5433 for local tools; leave as-is on VM if needed
       - "${POSTGRES_PUBLISH_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -33,23 +28,30 @@ services:
     restart: unless-stopped
 
   web:
-    profiles: ["full"]
     build:
       context: .
       dockerfile: Dockerfile
     image: ${APP_IMAGE:-berton-bottling-app}:${APP_TAG:-latest}
     container_name: berton-web
+    depends_on:
+      db:
+        condition: service_healthy
+    # Port 8000 for HTTP (tablets / transition); Caddy also serves 80/443
+    ports:
+      - "${APP_PORT:-8000}:8000"
     env_file:
       - path: .env
         required: false
     environment:
+      # Internal compose network hostname is "db", not localhost
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-berton}:${POSTGRES_PASSWORD:-berton_dev}@db:5432/${POSTGRES_DB:-berton_bottling}
       DEBUG: ${DEBUG:-false}
       SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
       SESSION_HTTPS_ONLY: ${SESSION_HTTPS_ONLY:-false}
       STORAGE_BACKEND: local
-      UPLOAD_DIR: /data/uploads
-      COMPILED_OUTPUT_DIR: /data/compiled
+      # Bind mounts below land at /app/... inside the container
+      UPLOAD_DIR: /app/uploads
+      COMPILED_OUTPUT_DIR: /app/compiled_output
       MANAGER_USERNAME: ${MANAGER_USERNAME:-manager}
       MANAGER_PASSWORD: ${MANAGER_PASSWORD:-manager}
       OPERATOR_USERNAME: ${OPERATOR_USERNAME:-operator}
@@ -57,14 +59,12 @@ services:
       ENABLE_DEV_TOOLS: ${ENABLE_DEV_TOOLS:-false}
       PALLET_TAG_DISPATCH: ${PALLET_TAG_DISPATCH:-browser}
       APP_VERSION: ${APP_VERSION:-0.1.0}
-    ports:
-      # Tablets reach host IP:8000 — must bind 0.0.0.0 (Compose default)
-      - "${APP_PORT:-8000}:8000"
+      TZ: ${TZ:-Australia/Sydney}
     volumes:
-      - app_data:/data
-    depends_on:
-      db:
-        condition: service_healthy
+      # Persist uploads and generated files on the VM host tree
+      - ./uploads:/app/uploads
+      - ./compiled_output:/app/compiled_output
+      - ./pallet_tags:/app/pallet_tags
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/ready"]
@@ -72,29 +72,6 @@ services:
       timeout: 5s
       start_period: 45s
       retries: 3
-
-  web:
-    build: .
-    container_name: berton-web
-    depends_on:
-      db:
-        condition: service_healthy
-    # Port 8000 still published for HTTP access during HTTPS transition
-    # Remove this once HTTPS via Caddy is confirmed working
-    ports:
-      - "0.0.0.0:8000:8000"
-    env_file:
-      - .env
-    environment:
-      # Override DATABASE_URL to use internal compose network
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-berton}:${POSTGRES_PASSWORD:-berton_dev}@db:5432/${POSTGRES_DB:-berton_bottling}
-      TZ: ${TZ:-Australia/Sydney}
-    volumes:
-      # Persist uploads and generated files
-      - ./uploads:/app/uploads
-      - ./compiled_output:/app/compiled_output
-      - ./pallet_tags:/app/pallet_tags
-    restart: unless-stopped
     logging:
       driver: json-file
       options:
@@ -122,4 +99,5 @@ services:
 
 volumes:
   postgres_data:
-  app_data:
+  caddy_data:
+  caddy_config:
