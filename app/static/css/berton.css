@@ -66,6 +66,9 @@ h1, h2, h3, .font-display {
 .touch-target {
     min-height: 48px;
     min-width: 48px;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    box-sizing: border-box;
 }
 
 /* Navigation — reverse of logo (white mark on brand black) */
@@ -152,6 +155,7 @@ h1, h2, h3, .font-display {
     cursor: pointer;
     transition: background-color 0.2s, transform 0.1s;
     text-decoration: none;
+    box-sizing: border-box;
 }
 
 .btn-primary:hover {
@@ -183,6 +187,7 @@ h1, h2, h3, .font-display {
     cursor: pointer;
     transition: all 0.2s;
     text-decoration: none;
+    box-sizing: border-box;
 }
 
 .btn-secondary:hover {
@@ -549,12 +554,14 @@ h1, h2, h3, .font-display {
     font-size: 0.95rem;
 }
 
+/* Run cards grid — larger minimum for tablets, fills width appropriately */
 .run-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 0.75rem;
 }
 
+/* Run cards — touch-friendly sizing */
 .run-card {
     display: flex;
     flex-direction: column;
@@ -683,6 +690,7 @@ h1, h2, h3, .font-display {
     gap: 0.85rem;
 }
 
+/* Form cards — generous touch targets */
 .form-card {
     display: block;
     min-height: 5.5rem;
@@ -1456,30 +1464,42 @@ body.pdf-standalone-page .reference-pdf-status {
     gap: 0.35rem;
 }
 
+/* Barcode field row — responsive, wraps on narrow screens */
 .barcode-field-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: stretch;
+    max-width: 100%;
 }
 
 .barcode-field-row .berton-input {
-    flex: 1;
-    min-width: 0;
+    /* Allow input to shrink, take available space, wrap before overflow */
+    flex: 1 1 auto;
+    min-width: min(200px, 100%);
+    max-width: 100%;
 }
 
+/* Barcode scan buttons — 48px minimum touch targets */
 .barcode-scan-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0 0.85rem;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem 1rem;
+    min-height: 48px;
+    min-width: 48px;
     border: 2px solid var(--berton-gold);
     border-radius: 6px;
     background: var(--berton-warm);
     color: var(--berton-burgundy);
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
+    box-sizing: border-box;
+    /* Allow button to wrap to new line if row is too narrow */
+    flex-shrink: 1;
 }
 
 .barcode-scan-btn:hover {

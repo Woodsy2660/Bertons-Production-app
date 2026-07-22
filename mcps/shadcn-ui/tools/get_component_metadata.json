@@ -1,0 +1,16 @@
+{
+  "name": "get_component_metadata",
+  "description": "Get metadata for a specific shadcn/ui v4 component",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "componentName": {
+        "type": "string",
+        "description": "Name of the shadcn/ui component (e.g., \"accordion\", \"button\")"
+      }
+    },
+    "required": [
+      "componentName"
+    ]
+  }
+}

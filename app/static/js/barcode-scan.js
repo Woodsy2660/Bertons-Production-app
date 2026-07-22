@@ -1,7 +1,6 @@
 /**
  * Barcode scanner support for batch-number fields.
  *
- * - USB handheld scanners (keyboard wedge + Enter)
  * - Device camera (BarcodeDetector API, html5-qrcode fallback)
  * - GS1-128 / Data Matrix / QR → AI (10) batch/lot extraction
  */
@@ -13,8 +12,6 @@
     const HTML5_QRCODE_URL = "/static/js/vendor/html5-qrcode.min.js";
     /** Camera: square QR / Data Matrix on label (left of batch number). */
     const CAMERA_BARCODE_FORMATS = ["qr_code", "data_matrix"];
-    /** Handheld gun may also read GS1-128 linear barcodes. */
-    const BARCODE_FORMATS = ["code_128", "data_matrix", "qr_code"];
 
     const CAMERA_HINT =
         "Scan the square QR code on the label — it sits to the left of the printed batch number.";
@@ -194,7 +191,7 @@
         window.setTimeout(() => {
             const status = input.closest(".barcode-field")?.querySelector(".barcode-field-status");
             if (status && status.dataset.state === "scanned") {
-                status.textContent = "Camera: scan QR left of batch no. on label";
+                status.textContent = "Tap Scan to use camera";
                 status.dataset.state = "idle";
             }
         }, 2500);
@@ -272,7 +269,7 @@
         input.addEventListener("focus", () => {
             const status = input.closest(".barcode-field")?.querySelector(".barcode-field-status");
             if (status && status.dataset.state === "idle") {
-                status.textContent = "Ready for handheld scanner…";
+                status.textContent = "Tap Scan to use camera";
             }
         });
 
@@ -282,20 +279,8 @@
             state.scanning = false;
             const status = input.closest(".barcode-field")?.querySelector(".barcode-field-status");
             if (status && status.dataset.state === "idle") {
-                status.textContent = "Camera: scan QR left of batch no. on label";
+                status.textContent = "Tap Scan to use camera";
             }
-        });
-    }
-
-    function bindScanButtons(root) {
-        root.querySelectorAll("[data-barcode-scan-trigger]").forEach((button) => {
-            button.addEventListener("click", () => {
-                const input = document.getElementById(button.dataset.barcodeScanTrigger);
-                if (!input) return;
-                input.focus();
-                input.select();
-                setFieldStatus(input, "Ready for handheld scanner…", "ready");
-            });
         });
     }
 
@@ -629,7 +614,7 @@
                     fallbackErr.message || err.message || "Could not start camera"
                 );
                 showCameraLoading("Camera preview unavailable");
-                setFieldStatus(input, "Camera unavailable — use gun or type", "error");
+                setFieldStatus(input, "Camera unavailable — type manually", "error");
             }
         }
     }
@@ -646,7 +631,6 @@
 
     function init() {
         document.querySelectorAll("[data-barcode-scan]").forEach(enhanceInput);
-        bindScanButtons(document);
         bindCameraButtons(document);
     }
 

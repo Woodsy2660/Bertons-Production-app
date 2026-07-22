@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, Response, JSONResponse
+from fastapi.responses import RedirectResponse, Response, JSONResponse, FileResponse, StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,6 +146,38 @@ def _database_unavailable_response(request: Request) -> Response:
             status_code=503,
             content={
                 "detail": "Database unavailable. Ensure Postgres is running (docker compose up -d).",
+            },
+        )
+    return templates.TemplateResponse(
+        request,
+        "errors/database_unavailable.html",
+        status_code=503,
+    )
+
+
+@app.exception_handler(OperationalError)
+@app.exception_handler(InterfaceError)
+async def database_operational_error_handler(
+    request: Request,
+    exc: OperationalError | InterfaceError,
+) -> Response:
+    return _database_unavailable_response(request)
+
+
+@app.exception_handler(OSError)
+async def database_connection_os_error_handler(request: Request, exc: OSError) -> Response:
+    if not is_db_connection_error(exc):
+        raise exc
+    return _database_unavailable_response(request)
+
+
+
+def _database_unavailable_response(request: Request) -> Response:
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Database unavailable. Start Docker Desktop and run: docker compose up -d",
             },
         )
     return templates.TemplateResponse(
@@ -593,6 +625,21 @@ async def readiness_check():
             "status": "not_ready",
             "database": "unavailable",
             "hint": "Ensure the database service is running and DATABASE_URL is correct.",
+        },
+    )
+
+
+@app.get("/ready")
+async def readiness_check():
+    """Readiness probe — confirms PostgreSQL is reachable."""
+    if await check_db_connection():
+        return {"status": "ready", "database": "connected"}
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "not_ready",
+            "database": "unavailable",
+            "hint": "Start Docker Desktop, then run: docker compose up -d",
         },
     )
 
@@ -1644,10 +1691,17 @@ async def reopen_batch_route(
 
 @app.get("/uploads/{doc_id}/view")
 async def view_upload(
+    request: Request,
     doc_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """View an uploaded PDF inline (for embedding in the page)."""
+    """View an uploaded PDF inline (for embedding in the page).
+
+    Supports HTTP Range requests for iOS Safari compatibility.
+    iOS Safari requires 206 Partial Content responses for PDF viewing.
+    FileResponse doesn't reliably handle Range in all Starlette versions,
+    so we implement it manually for both local and remote files.
+    """
     result = await db.execute(
         select(UploadedDocument).where(UploadedDocument.id == doc_id)
     )
@@ -1668,7 +1722,35 @@ async def view_upload(
     return Response(
         content=content,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Disposition": f'inline; filename="{doc.original_filename}"',
+        },
+    )
+
+
+@app.get("/uploads/{doc_id}/page")
+async def view_upload_page(
+    request: Request,
+    doc_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Standalone full-page PDF viewer (no app chrome)."""
+    result = await db.execute(
+        select(UploadedDocument).where(UploadedDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return templates.TemplateResponse(
+        request,
+        "documents/standalone.html",
+        {
+            "doc": doc,
+            "title": doc.original_filename,
+        },
     )
 
 

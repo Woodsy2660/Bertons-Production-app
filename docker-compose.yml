@@ -73,6 +73,53 @@ services:
       start_period: 45s
       retries: 3
 
+  web:
+    build: .
+    container_name: berton-web
+    depends_on:
+      db:
+        condition: service_healthy
+    # Port 8000 still published for HTTP access during HTTPS transition
+    # Remove this once HTTPS via Caddy is confirmed working
+    ports:
+      - "0.0.0.0:8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to use internal compose network
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-berton}:${POSTGRES_PASSWORD:-berton_dev}@db:5432/${POSTGRES_DB:-berton_bottling}
+      TZ: ${TZ:-Australia/Sydney}
+    volumes:
+      # Persist uploads and generated files
+      - ./uploads:/app/uploads
+      - ./compiled_output:/app/compiled_output
+      - ./pallet_tags:/app/pallet_tags
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: berton-caddy
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
   app_data:
