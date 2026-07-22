@@ -38,6 +38,7 @@ def _local_path_candidates(stored_path: str) -> list[Path]:
         Path(normalized),
         upload_root / name,
         Path("uploads") / name,
+        Path("/app/uploads") / name,  # Docker compose bind mount on VM
         Path("/data/uploads") / name,
         Path("./uploads") / name,
     ]
