@@ -24,7 +24,8 @@
       "Bash(git push)",
       "WebSearch",
       "WebFetch(domain:cdnjs.cloudflare.com)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(git check-ignore:*)"
     ]
   }
 }
