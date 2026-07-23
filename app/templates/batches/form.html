@@ -178,7 +178,100 @@
     {# ===== ATOMIC FORMS ===== #}
     {% elif form_template.accrual_mode.value == 'atomic' %}
     <form action="/batches/{{ batch.id }}/forms/{{ form_template.form_type.value }}" method="POST"
-          class="berton-card p-6 js-auto-save-draft">
+          class="berton-card p-6 js-auto-save-draft {% if form_template.form_type.value == 'cask_production_waste' %}js-cask-waste-form{% endif %}">
+        {% if form_template.form_type.value == 'cask_production_waste' %}
+        {# FOR CA 003 — grouped waste categories with auto totals #}
+        {% set hp = form_instance.header_payload or {} if form_instance else {} %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+            {% for field in form_template.header_fields if field.key in ['product', 'run_number', 'date'] %}
+            {% set field_value = hp.get(field.key, '') %}
+            {% set display_value = field_value or inherited_values.get(field.key, '') or form_defaults.get(field.key, '') %}
+            {% set readonly = false %}
+            <div>
+                <label class="berton-label">{{ field.label }}
+                    {% if prefill_flags.get(field.key) %}<span class="prefill-hint">(from work order)</span>{% endif %}
+                </label>
+                {% set field_id = field.key %}
+                {% set field_name = field.key %}
+                {% include "batches/_form_field.html" %}
+            </div>
+            {% endfor %}
+        </div>
+        {% set waste_groups = [
+            ('Casks', [
+                ('casks_machine_jam', 'Machine Jam'),
+                ('casks_printing', 'Printing'),
+                ('casks_other_count', 'Other (count)'),
+                ('casks_other_problem', 'Other (problem)'),
+                ('casks_total', 'Total'),
+            ]),
+            ('Bladders', [
+                ('bladders_split', 'Split'),
+                ('bladders_faulty_tap', 'Faulty Tap'),
+                ('bladders_other_count', 'Other (count)'),
+                ('bladders_other_problem', 'Other (problem)'),
+                ('bladders_total', 'Total'),
+            ]),
+            ('Inners', [
+                ('inners_machine_jam', 'Machine Jam'),
+                ('inners_printing', 'Printing'),
+                ('inners_other_count', 'Other (count)'),
+                ('inners_other_problem', 'Other (problem)'),
+                ('inners_total', 'Total'),
+            ]),
+            ('Outers', [
+                ('outers_machine_jam', 'Machine Jam'),
+                ('outers_printing', 'Printing'),
+                ('outers_other_count', 'Other (count)'),
+                ('outers_other_problem', 'Other (problem)'),
+                ('outers_total', 'Total'),
+            ]),
+        ] %}
+        <div class="space-y-6">
+            {% for group_title, fields in waste_groups %}
+            <section class="cask-waste-group">
+                <h2 class="text-lg text-primary font-semibold mb-3">{{ group_title }}</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% for key, label in fields %}
+                    <div>
+                        <label class="berton-label" for="{{ key }}">{{ label }}</label>
+                        {% if key.endswith('_total') %}
+                        <input type="number" id="{{ key }}" name="{{ key }}" readonly
+                               class="berton-input touch-target waste-total"
+                               data-waste-total-for="{{ group_title|lower }}"
+                               value="{{ hp.get(key, '') }}">
+                        {% elif key.endswith('_problem') %}
+                        <input type="text" id="{{ key }}" name="{{ key }}" class="berton-input touch-target"
+                               value="{{ hp.get(key, '') }}" placeholder="Describe problem">
+                        {% else %}
+                        <input type="number" id="{{ key }}" name="{{ key }}" min="0" step="1"
+                               class="berton-input touch-target waste-count"
+                               data-waste-group="{{ group_title|lower }}"
+                               value="{{ hp.get(key, '') }}">
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
+            <div>
+                <label class="berton-label" for="comments">Comments</label>
+                <textarea id="comments" name="comments" rows="3" class="berton-input">{{ hp.get('comments', '') }}</textarea>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="berton-label" for="initials">Signature / initials <span class="text-red-600">*</span></label>
+                    <input type="text" id="initials" name="initials" class="berton-input touch-target"
+                           value="{{ hp.get('initials', '') }}" maxlength="20" autocomplete="off">
+                </div>
+                <div>
+                    <label class="berton-label" for="signature_date">Signature date</label>
+                    <input type="date" id="signature_date" name="signature_date" class="berton-input touch-target"
+                           value="{{ hp.get('signature_date', '') }}">
+                </div>
+            </div>
+        </div>
+        {% else %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
             {% for field in form_template.header_fields %}
             {% set field_value = (form_instance.header_payload or {}).get(field.key, '') if form_instance else '' %}
@@ -195,6 +288,7 @@
             </div>
             {% endfor %}
         </div>
+        {% endif %}
         {% if not form_readonly %}
         <div class="form-complete-panel form-complete-panel--inset">
             <p class="berton-hint form-complete-hint">Changes save automatically as you type.</p>
@@ -381,7 +475,11 @@
                         </label>
                         {% set field_id = field.key %}
                         {% set field_name = field.key %}
+                        {% if form_template.form_type.value == 'cask_final_pallet_count' and field.key == 'pallet_no' %}
+                        {% set display_value = next_pallet_no %}
+                        {% else %}
                         {% set display_value = inherited_values.get(field.key, '') if field.source.value == 'inherited' else '' %}
+                        {% endif %}
                         {% set readonly = false %}
                         {% include "batches/_form_field.html" %}
                         {% if reference_values.get(field.key) %}
@@ -450,5 +548,32 @@
 {% block head %}
 <script src="/static/js/gs1-parse.js" defer></script>
 <script src="/static/js/barcode-scan.js" defer></script>
-<script src="/static/js/form-save.js?v=7" defer></script>
+<script src="/static/js/form-save.js?v=8" defer></script>
+<script>
+(function () {
+  function wasteSum(form, group) {
+    var total = 0;
+    form.querySelectorAll('.waste-count[data-waste-group="' + group + '"]').forEach(function (el) {
+      var n = parseFloat(el.value);
+      if (!isNaN(n)) total += n;
+    });
+    return total;
+  }
+  function refreshWasteTotals(form) {
+    form.querySelectorAll(".waste-total").forEach(function (el) {
+      var g = el.getAttribute("data-waste-total-for");
+      if (!g) return;
+      el.value = String(wasteSum(form, g));
+    });
+  }
+  document.querySelectorAll("form.js-cask-waste-form").forEach(function (form) {
+    refreshWasteTotals(form);
+    form.addEventListener("input", function (e) {
+      if (e.target && e.target.classList.contains("waste-count")) {
+        refreshWasteTotals(form);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

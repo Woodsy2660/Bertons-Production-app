@@ -12,10 +12,18 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.session import Role
 from app.config import Settings
-from app.forms import FormType
+from app.forms import FormType, forms_for_line_type
 from app.models import Batch, BatchHeader, BatchStatus, Compilation, FormStatus
 
-APP_FORM_TYPES = {ft.value for ft in FormType}
+# Default = bottling (legacy). Prefer forms_for_batch() for run-aware checks.
+APP_FORM_TYPES = {ft.value for ft in FormType if not ft.value.startswith("cask_")}
+
+
+def forms_for_batch(batch: Batch) -> set[str]:
+    """Form type values required for a batch based on line_type."""
+    line = getattr(batch, "line_type", None)
+    line_val = line.value if hasattr(line, "value") else (line or "bottling")
+    return {ft.value for ft in forms_for_line_type(line_val)}
 
 
 class BatchLifecycleError(HTTPException):
@@ -134,19 +142,20 @@ async def all_forms_submitted(db: AsyncSession, batch_id: uuid.UUID) -> bool:
     if not batch:
         return False
 
+    required = forms_for_batch(batch)
     submitted = {
         fi.form_type.value
         for fi in batch.form_instances
         if fi.status == FormStatus.SUBMITTED
     }
-    return APP_FORM_TYPES.issubset(submitted)
+    return required.issubset(submitted)
 
 
 async def maybe_transition_to_awaiting_review(
     db: AsyncSession,
     batch: Batch,
 ) -> bool:
-    """Auto-transition when all nine forms are submitted."""
+    """Auto-transition when all line-type forms are submitted."""
     if batch.status not in (BatchStatus.IN_PROGRESS, BatchStatus.REOPENED):
         return False
     if not await all_forms_submitted(db, batch.id):

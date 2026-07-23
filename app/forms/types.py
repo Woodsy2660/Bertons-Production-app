@@ -12,6 +12,11 @@ class FormType(str, Enum):
     CARTON_QC = "carton_qc"
     FINAL_PALLET_COUNT = "final_pallet_count"
     FINISHED_PRODUCT_PALLET = "finished_product_pallet"
+    # Cask line (FOR CA 001–004)
+    CASK_FINAL_PALLET_COUNT = "cask_final_pallet_count"
+    CASK_LINE_CHECK = "cask_line_check"
+    CASK_PRODUCTION_WASTE = "cask_production_waste"
+    CASK_TANK_DIP = "cask_tank_dip"
 
 
 class AccrualMode(str, Enum):

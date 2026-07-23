@@ -98,6 +98,41 @@ def normalize_multi_select_enums(
     return out
 
 
+def _num_or_zero(value: Any) -> float:
+    if value in (None, ""):
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def apply_cask_waste_totals(payload: dict[str, Any]) -> dict[str, Any]:
+    """Recalculate category totals for FOR CA 003 (never trust typed totals alone)."""
+    out = dict(payload)
+    out["casks_total"] = int(
+        _num_or_zero(out.get("casks_machine_jam"))
+        + _num_or_zero(out.get("casks_printing"))
+        + _num_or_zero(out.get("casks_other_count"))
+    )
+    out["bladders_total"] = int(
+        _num_or_zero(out.get("bladders_split"))
+        + _num_or_zero(out.get("bladders_faulty_tap"))
+        + _num_or_zero(out.get("bladders_other_count"))
+    )
+    out["inners_total"] = int(
+        _num_or_zero(out.get("inners_machine_jam"))
+        + _num_or_zero(out.get("inners_printing"))
+        + _num_or_zero(out.get("inners_other_count"))
+    )
+    out["outers_total"] = int(
+        _num_or_zero(out.get("outers_machine_jam"))
+        + _num_or_zero(out.get("outers_printing"))
+        + _num_or_zero(out.get("outers_other_count"))
+    )
+    return out
+
+
 def build_pick_list_lines(data: dict[str, Any]) -> list[dict]:
     """Extract pick-list line rows from form/API data."""
     lines = []
@@ -125,6 +160,16 @@ def build_pick_list_lines(data: dict[str, Any]) -> list[dict]:
 
 def reading_summary(form_type: str, payload: dict[str, Any]) -> str:
     """Short summary for the readings table / status board."""
+    if form_type == "cask_final_pallet_count":
+        pallet = payload.get("pallet_no")
+        cases = payload.get("cases_per_pallet")
+        bits = []
+        if pallet not in (None, ""):
+            bits.append(f"Pallet {pallet}")
+        if cases not in (None, ""):
+            bits.append(f"{cases} cases")
+        return " · ".join(bits) if bits else "Pallet entry"
+
     if form_type == "carton_qc":
         table = payload.get("table", "")
         if table == "carton_details" and payload.get("carton_code"):

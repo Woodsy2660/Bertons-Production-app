@@ -195,8 +195,8 @@ def stamp_berton_logo_on_pdf(pdf_bytes: bytes) -> bytes:
 
 
 
-# 16-slot compile template from spec
-COMPILE_SLOTS = [
+# Bottling: fixed 16-slot-style pack (existing). Unchanged for bottling runs.
+BOTTLING_COMPILE_SLOTS = [
     {"slot": 1, "source": "upload", "ref": "ezywine_listing", "orientation": "portrait"},
     {"slot": 2, "source": "app_form", "form_type": "daily_production", "orientation": "portrait"},
     {"slot": 3, "source": "app_form", "form_type": "filler_line_check", "orientation": "landscape"},
@@ -211,6 +211,30 @@ COMPILE_SLOTS = [
     {"slot": 12, "source": "app_form", "form_type": "finished_product_pallet", "orientation": "portrait"},
 ]
 
+# Cask: dedicated slot manifest (not forced into bottling 16-slot layout).
+# Order: EzyWine listing → work order → label refs → four cask station forms.
+CASK_COMPILE_SLOTS = [
+    {"slot": 1, "source": "upload", "ref": "ezywine_listing", "orientation": "portrait"},
+    {"slot": 2, "source": "upload", "ref": "work_order", "orientation": "portrait"},
+    {"slot": 3, "source": "upload_group", "ref": "label_reference", "orientation": "as_uploaded"},
+    {"slot": 4, "source": "app_form", "form_type": "cask_final_pallet_count", "orientation": "portrait"},
+    {"slot": 5, "source": "app_form", "form_type": "cask_line_check", "orientation": "landscape"},
+    {"slot": 6, "source": "app_form", "form_type": "cask_production_waste", "orientation": "portrait"},
+    {"slot": 7, "source": "app_form", "form_type": "cask_tank_dip", "orientation": "portrait"},
+]
+
+# Back-compat alias
+COMPILE_SLOTS = BOTTLING_COMPILE_SLOTS
+
+
+def compile_slots_for_batch(batch) -> list[dict]:
+    line = getattr(batch, "line_type", None)
+    line_val = line.value if hasattr(line, "value") else (line or "bottling")
+    if str(line_val).lower() == "cask":
+        return CASK_COMPILE_SLOTS
+    return BOTTLING_COMPILE_SLOTS
+
+
 # Form display names
 FORM_NAMES = {
     "daily_production": "Daily Production Sheet",
@@ -222,6 +246,10 @@ FORM_NAMES = {
     "carton_qc": "Carton Usage & Quality Control",
     "final_pallet_count": "Final Pallet Count Sheet",
     "finished_product_pallet": "Finished Product / Warehouse Pallet Count",
+    "cask_final_pallet_count": "Cask Final Pallet Count",
+    "cask_line_check": "Cask Line Check Sheet",
+    "cask_production_waste": "Cask Line Production Waste",
+    "cask_tank_dip": "Cask Line Tank Dip Sheet",
 }
 
 
@@ -284,7 +312,7 @@ async def compile_batch(
     # Collect all PDF pages
     pdf_writer = PdfWriter()
 
-    for slot_def in COMPILE_SLOTS:
+    for slot_def in compile_slots_for_batch(batch):
         slot_num = slot_def["slot"]
         source = slot_def["source"]
 

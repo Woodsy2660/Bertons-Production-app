@@ -259,6 +259,10 @@ async def api_save_draft(
         lines = build_pick_list_lines(body)
         if lines:
             payload["lines"] = lines
+    if form_type == "cask_production_waste":
+        from app.services.form_persistence import apply_cask_waste_totals
+
+        payload = apply_cask_waste_totals(payload)
 
     try:
         form_instance = await save_atomic_form(

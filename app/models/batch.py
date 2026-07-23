@@ -28,6 +28,12 @@ class BatchStatus(str, PyEnum):
     READY = "in_progress"
 
 
+class LineType(str, PyEnum):
+    """Production line type — determines which station forms appear on a run."""
+    BOTTLING = "bottling"
+    CASK = "cask"
+
+
 class Batch(Base):
     __tablename__ = "batches"
 
@@ -35,6 +41,11 @@ class Batch(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     run_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    line_type: Mapped[LineType] = mapped_column(
+        pg_enum(LineType, "linetype"),
+        default=LineType.BOTTLING,
+        nullable=False,
+    )
     status: Mapped[BatchStatus] = mapped_column(
         pg_enum(BatchStatus, "batchstatus"),
         default=BatchStatus.IN_PROGRESS,

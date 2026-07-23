@@ -20,6 +20,9 @@ Started {{ format_sydney(batch.created_at) }}
     <div class="run-card-head">
         <span class="run-card-title">Run {{ batch.run_number }}</span>
         <span class="run-card-status run-card-status--{{ status_modifier }}">{{ status_label }}</span>
+        {% if batch.line_type is defined and batch.line_type %}
+        <span class="run-card-status run-card-status--line">{{ batch.line_type.value|title }}</span>
+        {% endif %}
     </div>
     <p class="run-card-meta">
         {% if batch.header and batch.header.run_date %}

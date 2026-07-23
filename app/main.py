@@ -31,7 +31,7 @@ from app.models import (
     Batch, BatchHeader, FormInstance, Reading, UploadedDocument,
     Compilation, BatchStatus, FormStatus, FormType as ModelFormType,
     AccrualMode as ModelAccrualMode, DocumentSlot, PalletTagPrint,
-    FeedbackReportType,
+    FeedbackReportType, LineType,
 )
 from app.services.feedback import (
     FeedbackValidationError,
@@ -43,7 +43,7 @@ from app.services.feedback import (
     safe_return_path,
     summarize_user_agent,
 )
-from app.forms import FormType, AccrualMode, FORM_TEMPLATES, get_form_template
+from app.forms import FormType, AccrualMode, FORM_TEMPLATES, get_form_template, forms_for_line_type
 from app.services.batch_lifecycle import (
     assert_can_compile,
     assert_can_reopen,
@@ -308,6 +308,10 @@ FORM_DISPLAY_NAMES = {
     "carton_qc": "Carton Usage & Quality Control",
     "final_pallet_count": "Final Pallet Count Sheet",
     "finished_product_pallet": "Finished Product / Warehouse Pallet Count",
+    "cask_final_pallet_count": "Cask Final Pallet Count",
+    "cask_line_check": "Cask Line Check Sheet",
+    "cask_production_waste": "Cask Line Production Waste",
+    "cask_tank_dip": "Cask Line Tank Dip Sheet",
 }
 
 
@@ -665,16 +669,25 @@ async def create_batch(
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_manager)],
     run_number: str = Form(...),
+    line_type: str = Form("bottling"),
     work_order: UploadFile = File(...),
     label_references: list[UploadFile] = File(default=[]),
 ):
     """Create a new batch from work order upload and optional label references."""
     run_number = run_number.strip()
+    line_key = (line_type or "bottling").strip().lower()
+    if line_key not in ("bottling", "cask"):
+        return templates.TemplateResponse(
+            request,
+            "batches/new.html",
+            {"error": "Please choose a line type: Bottling or Cask."},
+            status_code=400,
+        )
     if not run_number:
         return templates.TemplateResponse(
             request,
             "batches/new.html",
-            {"error": "Please enter a run number."},
+            {"error": "Please enter a run number.", "line_type": line_key},
             status_code=400,
         )
 
@@ -682,7 +695,7 @@ async def create_batch(
         return templates.TemplateResponse(
             request,
             "batches/new.html",
-            {"error": "Please upload a PDF work order."},
+            {"error": "Please upload a PDF work order.", "line_type": line_key},
             status_code=400,
         )
 
@@ -693,12 +706,16 @@ async def create_batch(
         return templates.TemplateResponse(
             request,
             "batches/new.html",
-            {"error": f"Run {run_number} already exists. Open it from the dashboard."},
+            {
+                "error": f"Run {run_number} already exists. Open it from the dashboard.",
+                "line_type": line_key,
+            },
             status_code=400,
         )
 
     batch = Batch(
         run_number=run_number,
+        line_type=LineType.CASK if line_key == "cask" else LineType.BOTTLING,
         created_by="Manager",
         status=BatchStatus.IN_PROGRESS,
     )
@@ -892,11 +909,15 @@ async def batch_detail(
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    # Build form status
+    # Build form status — only forms for this run's line type
     form_status = {}
     form_instances_map = {fi.form_type.value: fi for fi in batch.form_instances}
-
-    for form_type in FormType:
+    line_val = (
+        batch.line_type.value
+        if getattr(batch, "line_type", None) is not None
+        else "bottling"
+    )
+    for form_type in forms_for_line_type(line_val):
         template = get_form_template(form_type)
         fi = form_instances_map.get(form_type.value)
         form_status[form_type.value] = {
@@ -1100,15 +1121,23 @@ async def completion_page(
     if not can_compile(batch, role):
         raise HTTPException(status_code=400, detail="Completion is not available for this run")
 
+    line_val = (
+        batch.line_type.value
+        if getattr(batch, "line_type", None) is not None
+        else "bottling"
+    )
+    required_form_types = forms_for_line_type(line_val)
     pending_forms = [
         FORM_DISPLAY_NAMES.get(fi.form_type.value, fi.form_type.value)
         for fi in batch.form_instances
         if fi.status != FormStatus.SUBMITTED
+        and fi.form_type.value in {ft.value for ft in required_form_types}
     ]
+    present = {fi.form_type.value for fi in batch.form_instances}
     missing_forms = [
         FORM_DISPLAY_NAMES.get(ft.value, ft.value)
-        for ft in FormType
-        if ft.value not in {fi.form_type.value for fi in batch.form_instances}
+        for ft in required_form_types
+        if ft.value not in present
     ]
     pending_forms = sorted(set(pending_forms + missing_forms))
 
@@ -1286,6 +1315,18 @@ async def form_view(
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown form type")
 
+    line_val = (
+        batch.line_type.value
+        if getattr(batch, "line_type", None) is not None
+        else "bottling"
+    )
+    allowed = {f.value for f in forms_for_line_type(line_val)}
+    if form_type not in allowed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Form not available for {line_val} runs",
+        )
+
     # Get or create form instance
     fi_result = await db.execute(
         select(FormInstance)
@@ -1309,6 +1350,19 @@ async def form_view(
 
     form_readonly = not can_write_forms(batch, role)
     delete_error = request.query_params.get("error")
+    readings_sorted = (
+        sorted(form_instance.readings, key=lambda r: r.sequence) if form_instance else []
+    )
+    next_pallet_no = 1
+    if form_type == "cask_final_pallet_count":
+        nums: list[int] = []
+        for r in readings_sorted:
+            raw = (r.payload or {}).get("pallet_no")
+            try:
+                nums.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+        next_pallet_no = max(nums, default=0) + 1
 
     return templates.TemplateResponse(
         request,
@@ -1317,12 +1371,13 @@ async def form_view(
             "batch": batch,
             "form_template": form_template,
             "form_instance": form_instance,
-            "readings": sorted(form_instance.readings, key=lambda r: r.sequence) if form_instance else [],
+            "readings": readings_sorted,
             "inherited_values": inherited_values,
             "prefill_flags": prefill_flags,
             "reference_values": reference_values,
             "form_defaults": form_defaults,
             "pick_list_lines": pick_list_lines,
+            "next_pallet_no": next_pallet_no,
             "now": datetime.now(),
             "role": role,
             "form_readonly": form_readonly,
@@ -1413,6 +1468,10 @@ async def save_atomic_form(
         lines = build_pick_list_lines(dict(form_data))
         if lines:
             payload["lines"] = lines
+    if form_type == "cask_production_waste":
+        from app.services.form_persistence import apply_cask_waste_totals
+
+        payload = apply_cask_waste_totals(payload)
 
     try:
         await persist_atomic_form(db, batch, form_type, payload, action=action, role=role)

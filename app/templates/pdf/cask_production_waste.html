@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Cask Line Production Waste</title>
+</head>
+<body>
+    {% include "_brand_header.html" %}
+
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th>Product</th>
+            <td>{{ header_payload.get('product') or (header.product if header else '-') }}</td>
+            <th>Run No.</th>
+            <td>{{ header_payload.get('run_number') or batch.run_number }}</td>
+            <th>Date</th>
+            <td>{{ header_payload.get('date') or (header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-') }}</td>
+        </tr>
+    </table>
+
+    {% macro waste_block(title, rows, total_key) %}
+    <h3 style="margin: 12px 0 6px; font-size: 11pt;">{{ title }}</h3>
+    <table>
+        {% for label, key in rows %}
+        <tr>
+            <th style="width: 40%;">{{ label }}</th>
+            <td>{{ header_payload.get(key, '-') }}</td>
+        </tr>
+        {% endfor %}
+        <tr>
+            <th>TOTAL</th>
+            <td><strong>{{ header_payload.get(total_key, '-') }}</strong></td>
+        </tr>
+    </table>
+    {% endmacro %}
+
+    {{ waste_block('Casks', [
+        ('Machine Jam', 'casks_machine_jam'),
+        ('Printing', 'casks_printing'),
+        ('Other (count)', 'casks_other_count'),
+        ('Other (problem)', 'casks_other_problem'),
+    ], 'casks_total') }}
+
+    {{ waste_block('Bladders', [
+        ('Split', 'bladders_split'),
+        ('Faulty Tap', 'bladders_faulty_tap'),
+        ('Other (count)', 'bladders_other_count'),
+        ('Other (problem)', 'bladders_other_problem'),
+    ], 'bladders_total') }}
+
+    {{ waste_block('Inners', [
+        ('Machine Jam', 'inners_machine_jam'),
+        ('Printing', 'inners_printing'),
+        ('Other (count)', 'inners_other_count'),
+        ('Other (problem)', 'inners_other_problem'),
+    ], 'inners_total') }}
+
+    {{ waste_block('Outers', [
+        ('Machine Jam', 'outers_machine_jam'),
+        ('Printing', 'outers_printing'),
+        ('Other (count)', 'outers_other_count'),
+        ('Other (problem)', 'outers_other_problem'),
+    ], 'outers_total') }}
+
+    <p style="margin-top: 14px;"><strong>Comments:</strong> {{ header_payload.get('comments', '-') }}</p>
+    <p><strong>Signature / initials:</strong> {{ header_payload.get('initials', '-') }}
+       &nbsp;&nbsp; <strong>Date:</strong> {{ header_payload.get('signature_date', '-') }}</p>
+
+    <div style="margin-top: 16px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 8px;">
+        {% if form_instance and form_instance.submitted_at %}
+        Submitted: {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% if form_instance.submitted_by %} by {{ form_instance.submitted_by }}{% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

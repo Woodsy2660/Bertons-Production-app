@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Cask Line Tank Dip Sheet</title>
+</head>
+<body>
+    {% include "_brand_header.html" %}
+
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th>Product</th>
+            <td>{{ header_payload.get('product') or (header.product if header else '-') }}</td>
+            <th>Run No.</th>
+            <td>{{ header_payload.get('run_number') or batch.run_number }}</td>
+            <th>Date</th>
+            <td>{{ header_payload.get('date') or (header.run_date.strftime('%Y-%m-%d') if header and header.run_date else '-') }}</td>
+        </tr>
+        <tr>
+            <th>Tank</th>
+            <td>{{ header_payload.get('tank') or (header.tank if header else '-') }}</td>
+            <th>Volume supplied</th>
+            <td colspan="3">{{ header_payload.get('volume_supplied', '-') }}</td>
+        </tr>
+    </table>
+
+    {% macro multi_cells(val) %}
+        {% if val is iterable and val is not string %}
+            {% for v in val %}{{ v if v not in (None, '') else '-' }}{% if not loop.last %} / {% endif %}{% endfor %}
+        {% else %}
+            {{ val if val not in (None, '') else '-' }}
+        {% endif %}
+    {% endmacro %}
+
+    <h3 style="margin: 12px 0 6px; font-size: 11pt;">Starting dip</h3>
+    <table>
+        <tr>
+            <th>cm</th>
+            <td>{{ multi_cells(header_payload.get('starting_dip_cm')) }}</td>
+            <th>L</th>
+            <td>{{ multi_cells(header_payload.get('starting_dip_l')) }}</td>
+            <th>Initials</th>
+            <td>{{ header_payload.get('starting_initials', '-') }}</td>
+        </tr>
+    </table>
+
+    <h3 style="margin: 12px 0 6px; font-size: 11pt;">Finishing dip</h3>
+    <table>
+        <tr>
+            <th>cm</th>
+            <td>{{ multi_cells(header_payload.get('finishing_dip_cm')) }}</td>
+            <th>L</th>
+            <td>{{ multi_cells(header_payload.get('finishing_dip_l')) }}</td>
+            <th>Initials</th>
+            <td>{{ header_payload.get('finishing_initials', '-') }}</td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 16px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 8px;">
+        {% if form_instance and form_instance.submitted_at %}
+        Submitted: {{ form_instance.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+        {% if form_instance.submitted_by %} by {{ form_instance.submitted_by }}{% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

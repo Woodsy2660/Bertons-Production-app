@@ -23,6 +23,11 @@
                         {% else %}status-in-progress{% endif %}">
                         {{ batch.status.value.replace('_', ' ').title() }}
                     </span>
+                    {% if batch.line_type is defined and batch.line_type %}
+                    <span class="status-badge line-type-badge line-type-badge--{{ batch.line_type.value }}">
+                        {{ batch.line_type.value|title }} line
+                    </span>
+                    {% endif %}
                 </div>
                 {% if batch.status.value == 'complete' %}
                 <p class="text-muted mt-1">This run is complete and read-only.</p>

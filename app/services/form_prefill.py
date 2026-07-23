@@ -159,6 +159,31 @@ def build_direct_prefill(batch: Batch, form_type: str) -> dict[str, Any]:
             "pallet_type": common["pallet_type"],
             "slip_sheet_required": common["slip_sheet_required"],
         },
+        "cask_final_pallet_count": {
+            "date": common["date"],
+            "run_number": common["run_number"],
+            "product": common["product"],
+        },
+        "cask_line_check": {
+            "date": common["date"],
+            "tank": header.tank or "",
+            "run_number": common["run_number"],
+            "wine": common["wine"],
+        },
+        "cask_production_waste": {
+            "product": common["product"],
+            "run_number": common["run_number"],
+            "date": common["date"],
+        },
+        "cask_tank_dip": {
+            "product": common["product"],
+            "run_number": common["run_number"],
+            "date": common["date"],
+            "tank": header.tank or "",
+            "volume_supplied": (
+                str(header.run_quantity) if header.run_quantity is not None else ""
+            ),
+        },
     }
     return mapping.get(form_type, {})
 

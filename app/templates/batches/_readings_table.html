@@ -10,6 +10,7 @@
 <td class="px-3 py-2 text-muted">
     {% if reading.payload.get('carton_code') %}{{ reading.payload.carton_code }}{% endif %}
     {% if reading.payload.get('pallet_no') %}Pallet {{ reading.payload.pallet_no }}{% endif %}
+    {% if reading.payload.get('cases_per_pallet') %} · {{ reading.payload.cases_per_pallet }} cases{% endif %}
     {% if reading.payload.get('high') %}High: {{ reading.payload.high }}{% endif %}
     {% if reading.payload.get('batch_number') %}{{ reading.payload.batch_number }}{% endif %}
     {% if reading.payload.get('record_carton_print') %}{{ reading.payload.record_carton_print }}{% endif %}
