@@ -56,11 +56,79 @@
         return data;
     }
 
+    // Routine mid-edit save feedback is suppressed — operators already know forms auto-save.
+    // Only offline queue / hard errors (and submit failures) surface the status bar.
+    const QUIET_STATUS_MESSAGES = new Set([
+        "Saving…",
+        "Saving...",
+        "Saved",
+        "Saving entry…",
+        "Saving entry...",
+        "Entry saved",
+        "Retrying saved entries…",
+        "Retrying saved entries...",
+        "All queued entries saved — refreshing…",
+        "All queued entries saved - refreshing…",
+        "Form marked complete",
+        "Marking form complete…",
+        "Marking form complete...",
+    ]);
+
     function setStatus(bar, state, message) {
         if (!bar) return;
+        if (state === "saved" || state === "saving" || QUIET_STATUS_MESSAGES.has(message)) {
+            // Keep quiet for normal progress; clear any leftover banner.
+            if (bar.dataset.state === "saved" || bar.dataset.state === "saving" || bar.dataset.state === "idle") {
+                bar.hidden = true;
+                bar.dataset.state = "idle";
+                bar.textContent = "";
+            }
+            return;
+        }
         bar.dataset.state = state;
         bar.textContent = message;
         bar.hidden = false;
+    }
+
+    /** User-facing fault only — strip status codes and technical wrappers. */
+    function formatUserError(detail, fallback) {
+        let msg = "";
+        if (typeof detail === "string") {
+            msg = detail;
+        } else if (Array.isArray(detail)) {
+            // FastAPI validation error list
+            msg = detail
+                .map((item) => {
+                    if (typeof item === "string") return item;
+                    if (item && item.msg) {
+                        const loc = Array.isArray(item.loc)
+                            ? item.loc.filter((p) => p !== "body").join(" ")
+                            : "";
+                        return loc ? `${loc}: ${item.msg}` : item.msg;
+                    }
+                    return "";
+                })
+                .filter(Boolean)
+                .join("; ");
+        } else if (detail && typeof detail === "object" && detail.msg) {
+            msg = String(detail.msg);
+        } else if (detail != null) {
+            msg = String(detail);
+        }
+
+        msg = msg
+            .replace(/^Failed to (save draft|save form|submit form|add reading|save header|delete entry):\s*/i, "")
+            .replace(/^HTTPException[:\s]*/i, "")
+            .replace(/^\d{3}:\s*/, "")
+            .replace(/^Error:\s*/i, "")
+            .trim();
+
+        // Field key → readable (fallback if server still sends raw keys)
+        msg = msg
+            .replace(/\binitials is required\b/i, "Signature / initials is required")
+            .replace(/\boperator_identifier is required\b/i, "Operator is required");
+
+        return msg || fallback || "Something went wrong";
     }
 
     async function postJson(url, body) {
@@ -82,11 +150,10 @@
         }
 
         if (!response.ok) {
-            const detail =
-                (payload && (payload.detail || payload.message)) ||
-                response.statusText ||
-                "Save failed";
-            throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+            const raw =
+                (payload && (payload.detail !== undefined ? payload.detail : payload.message)) ||
+                null;
+            throw new Error(formatUserError(raw, "Something went wrong"));
         }
         return payload;
     }
@@ -313,16 +380,18 @@
                     : `/api/batches/${batchId}/forms/${formType}/draft`;
             const queueId = `${saveKind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-            setStatus(bar, "saving", "Saving…");
-
+            // Quiet on success — static copy already tells operators forms auto-save.
+            // Only surface the status bar for offline queue / errors.
             const run = (async () => {
                 try {
                     await postJson(url, body);
                     lastPayload = payloadKey;
-                    setStatus(bar, "saved", "Saved");
-                    window.setTimeout(() => {
-                        if (bar.dataset.state === "saved") bar.hidden = true;
-                    }, 1500);
+                    // Clear a previous offline notice once a save succeeds again
+                    if (bar && bar.dataset.state === "queued") {
+                        bar.hidden = true;
+                        bar.dataset.state = "idle";
+                        bar.textContent = "";
+                    }
                 } catch (err) {
                     queueItem({ id: queueId, url, body, type: saveKind });
                     setStatus(bar, "queued", "Offline — changes kept locally, will retry");
@@ -399,7 +468,7 @@
                 setStatus(bar, "saved", "Form marked complete");
                 window.location.href = `/batches/${batchId}`;
             } catch (err) {
-                setStatus(bar, "error", `Could not submit — ${err.message}. Try again.`);
+                setStatus(bar, "error", formatUserError(err.message, "Could not complete form"));
             }
         });
     }
@@ -447,7 +516,7 @@
                 );
                 window.location.href = result.redirect || `/batches/${batchId}`;
             } catch (err) {
-                setStatus(bar, "error", `Submit failed — ${err.message}. Your draft is still saved.`);
+                setStatus(bar, "error", formatUserError(err.message, "Could not complete form"));
             }
         });
     }

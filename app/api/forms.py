@@ -126,9 +126,12 @@ async def api_add_reading(
             payload=payload,
             role=role,
         )
-    except Exception as e:
+    except HTTPException:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to add reading: {e}")
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Could not save entry")
 
     count_result = await db.execute(_reading_count_query(form_instance.id))
     reading_count = count_result.scalar_one() or 0
@@ -198,10 +201,11 @@ async def _api_delete_reading_impl(
             role=role,
         )
     except HTTPException:
-        raise
-    except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {e}")
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Could not delete entry")
 
     return ReadingDeleteResponse(reading_count=reading_count)
 
@@ -225,9 +229,12 @@ async def api_save_header(
 
     try:
         form_instance = await save_form_header(db, batch, form_type, payload, role=role)
-    except Exception as e:
+    except HTTPException:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save header: {e}")
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Could not save form")
 
     return SaveResponse(
         saved_at=datetime.utcnow(),
@@ -268,9 +275,12 @@ async def api_save_draft(
         form_instance = await save_atomic_form(
             db, batch, form_type, payload, action=action, role=role
         )
-    except Exception as e:
+    except HTTPException:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save draft: {e}")
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Could not save form")
 
     return SaveResponse(
         saved_at=datetime.utcnow(),
@@ -303,9 +313,12 @@ async def api_submit_form(
             submitted_by=body.submitted_by,
             role=role,
         )
-    except Exception as e:
+    except HTTPException:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to submit form: {e}")
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Could not complete form")
 
     if not form_instance:
         raise HTTPException(status_code=400, detail="No form data to submit")

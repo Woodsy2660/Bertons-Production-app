@@ -1477,9 +1477,9 @@ async def save_atomic_form(
         await persist_atomic_form(db, batch, form_type, payload, action=action, role=role)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save form: {e}")
+        raise HTTPException(status_code=500, detail="Could not save form")
 
     return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
 
@@ -1517,10 +1517,10 @@ async def delete_reading_route(
             url=f"{dest}?error={quote(detail)}",
             status_code=303,
         )
-    except Exception as e:
+    except Exception:
         await db.rollback()
         return RedirectResponse(
-            url=f"{dest}?error={quote(f'Failed to delete entry: {e}')}",
+            url=f"{dest}?error={quote('Could not delete entry')}",
             status_code=303,
         )
 
@@ -1567,9 +1567,9 @@ async def add_reading(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to add reading: {e}")
+        raise HTTPException(status_code=500, detail="Could not save entry")
 
     return RedirectResponse(
         url=f"/batches/{batch_id}/forms/{form_type}",
@@ -1605,9 +1605,9 @@ async def save_form_header(
         await persist_form_header(db, batch, form_type, payload, role=role)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save header: {e}")
+        raise HTTPException(status_code=500, detail="Could not save form")
 
     return RedirectResponse(
         url=f"/batches/{batch_id}/forms/{form_type}",
@@ -1632,9 +1632,9 @@ async def submit_form(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to submit form: {e}")
+        raise HTTPException(status_code=500, detail="Could not complete form")
 
     return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
 

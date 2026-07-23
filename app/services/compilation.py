@@ -263,11 +263,20 @@ def save_compiled_to_server_folder(
     output_filename: str,
     compiled_output_dir: str,
 ) -> str:
-    """Copy the compiled PDF to the local server folder for archival."""
+    """Copy the compiled PDF to the local server folder for archival.
+
+    Uses content-only copy (not copy2). Docker Desktop Windows bind mounts
+    often reject utime/chmod from copy2 with PermissionError [Errno 1]
+    Operation not permitted, which previously failed the whole compile.
+    """
     dest_dir = Path(compiled_output_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / output_filename
-    shutil.copy2(source_path, dest_path)
+    # copyfile = data only; avoids copystat (timestamps/mode) on restricted mounts
+    try:
+        shutil.copyfile(source_path, dest_path)
+    except OSError:
+        dest_path.write_bytes(source_path.read_bytes())
     return str(dest_path)
 
 

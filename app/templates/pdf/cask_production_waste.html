@@ -18,7 +18,7 @@
         </tr>
     </table>
 
-    {% macro waste_block(title, rows, total_key) %}
+    {% macro waste_block(title, rows, other_count_key, other_problem_key) %}
     <h3 style="margin: 12px 0 6px; font-size: 11pt;">{{ title }}</h3>
     <table>
         {% for label, key in rows %}
@@ -28,8 +28,15 @@
         </tr>
         {% endfor %}
         <tr>
-            <th>TOTAL</th>
-            <td><strong>{{ header_payload.get(total_key, '-') }}</strong></td>
+            <th>Other</th>
+            <td>
+                {% set oc = header_payload.get(other_count_key) %}
+                {% set op = header_payload.get(other_problem_key) %}
+                {% if oc is not none and oc != '' %}{{ oc }}{% else %}—{% endif %}
+                {% if op %}
+                &nbsp;—&nbsp; {{ op }}
+                {% endif %}
+            </td>
         </tr>
     </table>
     {% endmacro %}
@@ -37,30 +44,22 @@
     {{ waste_block('Casks', [
         ('Machine Jam', 'casks_machine_jam'),
         ('Printing', 'casks_printing'),
-        ('Other (count)', 'casks_other_count'),
-        ('Other (problem)', 'casks_other_problem'),
-    ], 'casks_total') }}
+    ], 'casks_other_count', 'casks_other_problem') }}
 
     {{ waste_block('Bladders', [
         ('Split', 'bladders_split'),
         ('Faulty Tap', 'bladders_faulty_tap'),
-        ('Other (count)', 'bladders_other_count'),
-        ('Other (problem)', 'bladders_other_problem'),
-    ], 'bladders_total') }}
+    ], 'bladders_other_count', 'bladders_other_problem') }}
 
     {{ waste_block('Inners', [
         ('Machine Jam', 'inners_machine_jam'),
         ('Printing', 'inners_printing'),
-        ('Other (count)', 'inners_other_count'),
-        ('Other (problem)', 'inners_other_problem'),
-    ], 'inners_total') }}
+    ], 'inners_other_count', 'inners_other_problem') }}
 
     {{ waste_block('Outers', [
         ('Machine Jam', 'outers_machine_jam'),
         ('Printing', 'outers_printing'),
-        ('Other (count)', 'outers_other_count'),
-        ('Other (problem)', 'outers_other_problem'),
-    ], 'outers_total') }}
+    ], 'outers_other_count', 'outers_other_problem') }}
 
     <p style="margin-top: 14px;"><strong>Comments:</strong> {{ header_payload.get('comments', '-') }}</p>
     <p><strong>Signature / initials:</strong> {{ header_payload.get('initials', '-') }}

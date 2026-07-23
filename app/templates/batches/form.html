@@ -11,9 +11,7 @@
      data-can-delete-readings="{{ 'true' if not form_readonly else 'false' }}"
      data-readings-preview-limit="5">
 
-    <div id="form-save-status" class="form-save-status" data-state="idle" hidden aria-live="polite">
-        Saved
-    </div>
+    <div id="form-save-status" class="form-save-status" data-state="idle" hidden aria-live="polite"></div>
     <span id="save-queue-count" class="save-queue-badge" hidden></span>
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -197,60 +195,59 @@
             </div>
             {% endfor %}
         </div>
+        {# Each group: count rows + one merged Other row (count + problem). No Total field. #}
         {% set waste_groups = [
             ('Casks', [
                 ('casks_machine_jam', 'Machine Jam'),
                 ('casks_printing', 'Printing'),
-                ('casks_other_count', 'Other (count)'),
-                ('casks_other_problem', 'Other (problem)'),
-                ('casks_total', 'Total'),
-            ]),
+            ], 'casks_other_count', 'casks_other_problem'),
             ('Bladders', [
                 ('bladders_split', 'Split'),
                 ('bladders_faulty_tap', 'Faulty Tap'),
-                ('bladders_other_count', 'Other (count)'),
-                ('bladders_other_problem', 'Other (problem)'),
-                ('bladders_total', 'Total'),
-            ]),
+            ], 'bladders_other_count', 'bladders_other_problem'),
             ('Inners', [
                 ('inners_machine_jam', 'Machine Jam'),
                 ('inners_printing', 'Printing'),
-                ('inners_other_count', 'Other (count)'),
-                ('inners_other_problem', 'Other (problem)'),
-                ('inners_total', 'Total'),
-            ]),
+            ], 'inners_other_count', 'inners_other_problem'),
             ('Outers', [
                 ('outers_machine_jam', 'Machine Jam'),
                 ('outers_printing', 'Printing'),
-                ('outers_other_count', 'Other (count)'),
-                ('outers_other_problem', 'Other (problem)'),
-                ('outers_total', 'Total'),
-            ]),
+            ], 'outers_other_count', 'outers_other_problem'),
         ] %}
         <div class="space-y-6">
-            {% for group_title, fields in waste_groups %}
+            {% for group_title, count_fields, other_count_key, other_problem_key in waste_groups %}
             <section class="cask-waste-group">
                 <h2 class="text-lg text-primary font-semibold mb-3">{{ group_title }}</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {% for key, label in fields %}
+                    {% for key, label in count_fields %}
                     <div>
                         <label class="berton-label" for="{{ key }}">{{ label }}</label>
-                        {% if key.endswith('_total') %}
-                        <input type="number" id="{{ key }}" name="{{ key }}" readonly
-                               class="berton-input touch-target waste-total"
-                               data-waste-total-for="{{ group_title|lower }}"
-                               value="{{ hp.get(key, '') }}">
-                        {% elif key.endswith('_problem') %}
-                        <input type="text" id="{{ key }}" name="{{ key }}" class="berton-input touch-target"
-                               value="{{ hp.get(key, '') }}" placeholder="Describe problem">
-                        {% else %}
                         <input type="number" id="{{ key }}" name="{{ key }}" min="0" step="1"
-                               class="berton-input touch-target waste-count"
-                               data-waste-group="{{ group_title|lower }}"
+                               class="berton-input touch-target"
                                value="{{ hp.get(key, '') }}">
-                        {% endif %}
                     </div>
                     {% endfor %}
+                    {# Other: count + problem side by side (same entry), same field chrome as siblings #}
+                    <div class="md:col-span-2">
+                        <div class="berton-label mb-1">Other</div>
+                        <div class="grid grid-cols-1 sm:grid-cols-[7rem_1fr] gap-4">
+                            <div>
+                                <label class="berton-label" for="{{ other_count_key }}">Count</label>
+                                <input type="number" id="{{ other_count_key }}" name="{{ other_count_key }}"
+                                       min="0" step="1"
+                                       class="berton-input touch-target"
+                                       value="{{ hp.get(other_count_key, '') }}"
+                                       aria-label="{{ group_title }} other count">
+                            </div>
+                            <div>
+                                <label class="berton-label" for="{{ other_problem_key }}">Problem</label>
+                                <input type="text" id="{{ other_problem_key }}" name="{{ other_problem_key }}"
+                                       class="berton-input touch-target"
+                                       value="{{ hp.get(other_problem_key, '') }}"
+                                       aria-label="{{ group_title }} other problem">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
             {% endfor %}
@@ -548,32 +545,5 @@
 {% block head %}
 <script src="/static/js/gs1-parse.js" defer></script>
 <script src="/static/js/barcode-scan.js" defer></script>
-<script src="/static/js/form-save.js?v=8" defer></script>
-<script>
-(function () {
-  function wasteSum(form, group) {
-    var total = 0;
-    form.querySelectorAll('.waste-count[data-waste-group="' + group + '"]').forEach(function (el) {
-      var n = parseFloat(el.value);
-      if (!isNaN(n)) total += n;
-    });
-    return total;
-  }
-  function refreshWasteTotals(form) {
-    form.querySelectorAll(".waste-total").forEach(function (el) {
-      var g = el.getAttribute("data-waste-total-for");
-      if (!g) return;
-      el.value = String(wasteSum(form, g));
-    });
-  }
-  document.querySelectorAll("form.js-cask-waste-form").forEach(function (form) {
-    refreshWasteTotals(form);
-    form.addEventListener("input", function (e) {
-      if (e.target && e.target.classList.contains("waste-count")) {
-        refreshWasteTotals(form);
-      }
-    });
-  });
-})();
-</script>
+<script src="/static/js/form-save.js?v=11" defer></script>
 {% endblock %}

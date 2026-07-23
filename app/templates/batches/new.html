@@ -49,13 +49,22 @@
             </div>
         </div>
 
-        <!-- Step 1: Work Order -->
-        <div class="berton-card p-6">
-            <div class="flex items-start mb-4">
+        <!-- Step 1: Work Order + in-card preview -->
+        <div class="berton-card p-6 space-y-4">
+            <div class="flex items-start">
                 <span class="step-number">2</span>
                 <div>
                     <h2 class="text-lg text-primary font-semibold">Upload Work Order</h2>
-                    <p class="berton-hint">This is the only required document. Operators will see it on screen during the run.</p>
+                    <p class="berton-hint">Required. Preview appears in this section when you select a PDF.</p>
+                </div>
+            </div>
+
+            <div id="work-order-preview-slot" class="reference-preview-column doc-preview-slot">
+                <div id="work-order-preview-empty" class="doc-preview-empty berton-hint">
+                    Select a work order PDF below to preview it here.
+                </div>
+                <div id="work-order-preview-shell" class="hidden">
+                    {{ reference_pdf_preview_shell('Work Order', 'work-order', 'work-order-preview-viewer') }}
                 </div>
             </div>
 
@@ -78,23 +87,32 @@
             </label>
         </div>
 
-        <!-- Step 2: Label References (optional) -->
-        <div class="berton-card p-6">
-            <div class="flex items-start mb-4">
+        <!-- Step 2: Label References + in-card preview -->
+        <div class="berton-card p-6 space-y-4">
+            <div class="flex items-start">
                 <span class="step-number">3</span>
                 <div>
                     <h2 class="text-lg text-primary font-semibold">Label References <span class="text-sm font-normal text-muted">(optional)</span></h2>
-                    <p class="berton-hint">Upload any label proof PDFs now, or add them later via Edit Run.</p>
+                    <p class="berton-hint">Upload now or later via Edit Run. Previews appear in this section.</p>
                 </div>
             </div>
+
+            <div id="label-previews-slot" class="space-y-6 doc-preview-slot" hidden></div>
 
             <label for="label_references" class="upload-zone block" id="label-zone">
                 <input type="file" id="label_references" name="label_references" accept=".pdf" multiple
                        class="hidden" onchange="handleLabelRefs(this)">
-                <p class="text-lg font-semibold">Select label reference PDFs</p>
-                <p class="berton-hint mt-1">You can select more than one file</p>
+                <div id="label-prompt">
+                    <p class="text-lg font-semibold">Select label reference PDFs</p>
+                    <p class="berton-hint mt-1">You can select more than one file</p>
+                </div>
+                <div id="label-selected" class="hidden">
+                    <p class="text-lg font-semibold text-[var(--berton-success)]">Label PDFs selected</p>
+                    <p id="label-filename-summary" class="text-muted mt-1"></p>
+                    <p class="berton-hint mt-2">Select again to change files</p>
+                </div>
             </label>
-            <ul id="label-list" class="mt-4 space-y-2 hidden"></ul>
+            <ul id="label-list" class="mt-2 space-y-2 hidden"></ul>
         </div>
 
         <!-- Step 3: Run Number -->
@@ -117,16 +135,11 @@
         <div class="flex flex-col sm:flex-row gap-3 justify-end pt-2">
             <a href="/" class="btn-secondary text-center">Cancel</a>
             <button type="submit" id="submit-btn" class="btn-primary px-8" disabled>
-                Start Bottling Run
+                Start Run
             </button>
         </div>
     </form>
 </div>
-
-<div id="work-order-preview-wrap" class="reference-preview-column hidden mt-8">
-    {{ reference_pdf_preview_shell('Work Order Preview', 'work-order', 'work-order-preview-viewer') }}
-</div>
-<div id="label-previews-wrap" class="reference-preview-column hidden mt-8 space-y-6"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -139,6 +152,38 @@ function extractRunNumber(filename) {
     return match ? match[0] : "";
 }
 
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function previewShellHtml(title, modifier, viewerId, filename) {
+    return `
+        <div class="reference-doc-block reference-doc-block--${modifier}">
+            <div class="reference-doc-toolbar">
+                <div class="reference-doc-heading">
+                    <h2 class="reference-doc-title">${escapeHtml(title)}</h2>
+                    <p class="reference-doc-filename reference-pdf-preview-filename">${escapeHtml(filename || "")}</p>
+                </div>
+                <div class="reference-doc-actions">
+                    <div class="reference-pdf-zoom-controls" aria-label="Zoom controls">
+                        <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-out" title="Zoom out">−</button>
+                        <span class="reference-pdf-zoom-value">100%</span>
+                        <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-in" title="Zoom in">+</button>
+                        <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset" data-action="zoom-reset" title="Reset zoom">Fit</button>
+                    </div>
+                </div>
+            </div>
+            <div id="${viewerId}" class="reference-pdf-viewer reference-pdf-viewer--loading" data-reference-pdf-viewer data-initial-zoom="1">
+                <p class="reference-pdf-status">Loading preview…</p>
+                <div class="reference-pdf-pages"></div>
+            </div>
+        </div>`;
+}
+
 async function mountPreview(viewerId, file, filename) {
     const viewer = document.getElementById(viewerId);
     if (!viewer) return;
@@ -146,7 +191,7 @@ async function mountPreview(viewerId, file, filename) {
     viewer.querySelector(".reference-pdf-pages")?.replaceChildren();
     const block = viewer.closest(".reference-doc-block");
     const nameEl = block?.querySelector(".reference-pdf-preview-filename");
-    if (nameEl) nameEl.textContent = filename;
+    if (nameEl) nameEl.textContent = filename || "";
     await mountViewerFromFile(file, viewer);
 }
 
@@ -154,7 +199,8 @@ window.handleWorkOrder = async function handleWorkOrder(input) {
     const zone = document.getElementById("work-order-zone");
     const prompt = document.getElementById("work-order-prompt");
     const selected = document.getElementById("work-order-selected");
-    const previewWrap = document.getElementById("work-order-preview-wrap");
+    const empty = document.getElementById("work-order-preview-empty");
+    const shell = document.getElementById("work-order-preview-shell");
     const submitBtn = document.getElementById("submit-btn");
     const runNumber = document.getElementById("run_number");
 
@@ -164,66 +210,65 @@ window.handleWorkOrder = async function handleWorkOrder(input) {
         prompt.classList.add("hidden");
         selected.classList.remove("hidden");
         document.getElementById("work-order-filename").textContent = file.name;
-        previewWrap.classList.remove("hidden");
-        submitBtn.disabled = false;
+        empty?.classList.add("hidden");
+        shell?.classList.remove("hidden");
+        submitBtn.disabled = !runNumber.value.trim();
         await mountPreview("work-order-preview-viewer", file, file.name);
 
         const detected = extractRunNumber(file.name);
         if (detected && !runNumber.value) {
             runNumber.value = detected;
+            submitBtn.disabled = false;
+        } else {
+            submitBtn.disabled = !(input.files.length && runNumber.value.trim());
         }
     }
 };
 
 window.handleLabelRefs = async function handleLabelRefs(input) {
     const list = document.getElementById("label-list");
-    const previewsWrap = document.getElementById("label-previews-wrap");
+    const slot = document.getElementById("label-previews-slot");
     const zone = document.getElementById("label-zone");
+    const prompt = document.getElementById("label-prompt");
+    const selected = document.getElementById("label-selected");
+    const summary = document.getElementById("label-filename-summary");
+
     list.innerHTML = "";
-    previewsWrap.innerHTML = "";
+    slot.innerHTML = "";
+    slot.hidden = true;
 
     if (input.files && input.files.length > 0) {
+        const files = [...input.files];
         zone.classList.add("has-file");
+        prompt?.classList.add("hidden");
+        selected?.classList.remove("hidden");
+        if (summary) {
+            summary.textContent =
+                files.length === 1 ? files[0].name : `${files.length} files selected`;
+        }
         list.classList.remove("hidden");
-        previewsWrap.classList.remove("hidden");
+        slot.hidden = false;
 
-        for (const [index, file] of [...input.files].entries()) {
+        for (const [index, file] of files.entries()) {
             const li = document.createElement("li");
             li.className = "flex items-center gap-2 text-muted";
             li.textContent = file.name;
             list.appendChild(li);
 
             const viewerId = `label-preview-viewer-${index}`;
-            const title = input.files.length > 1 ? `Label Reference ${index + 1}` : "Label Reference";
-            const block = document.createElement("div");
-            block.className = "reference-doc-block reference-doc-block--label-reference";
-            block.innerHTML = `
-                <div class="reference-doc-toolbar">
-                    <div class="reference-doc-heading">
-                        <h2 class="reference-doc-title">${title}</h2>
-                        <p class="reference-doc-filename reference-pdf-preview-filename">${file.name}</p>
-                    </div>
-                    <div class="reference-doc-actions">
-                        <div class="reference-pdf-zoom-controls" aria-label="Zoom controls">
-                            <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-out" title="Zoom out">−</button>
-                            <span class="reference-pdf-zoom-value">100%</span>
-                            <button type="button" class="reference-pdf-zoom-btn" data-action="zoom-in" title="Zoom in">+</button>
-                            <button type="button" class="reference-pdf-zoom-btn reference-pdf-zoom-btn--reset" data-action="zoom-reset" title="Reset zoom">Fit</button>
-                        </div>
-                    </div>
-                </div>
-                <div id="${viewerId}" class="reference-pdf-viewer reference-pdf-viewer--loading" data-reference-pdf-viewer data-initial-zoom="1">
-                    <p class="reference-pdf-status">Loading preview…</p>
-                    <div class="reference-pdf-pages"></div>
-                </div>
-            `;
-            previewsWrap.appendChild(block);
+            const title =
+                files.length > 1 ? `Label Reference ${index + 1}` : "Label Reference";
+            slot.insertAdjacentHTML(
+                "beforeend",
+                previewShellHtml(title, "label-reference", viewerId, file.name)
+            );
             await mountPreview(viewerId, file, file.name);
         }
     } else {
         zone.classList.remove("has-file");
+        prompt?.classList.remove("hidden");
+        selected?.classList.add("hidden");
         list.classList.add("hidden");
-        previewsWrap.classList.add("hidden");
     }
 };
 

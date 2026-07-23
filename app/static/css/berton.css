@@ -1151,6 +1151,25 @@ body.pdf-standalone-page .reference-pdf-status {
     margin-right: auto;
 }
 
+/* New / edit run — PDF preview lives inside each document card */
+.doc-preview-slot {
+    width: 100%;
+}
+
+.doc-preview-empty {
+    padding: 1rem 0.25rem;
+    margin: 0;
+}
+
+.berton-card .reference-doc-block {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.berton-card .reference-doc-block + .reference-doc-block,
+.berton-card .edit-label-block + .edit-label-block {
+    margin-top: 0;
+}
+
 /* Step indicators */
 .step-number {
     display: inline-flex;
@@ -1340,7 +1359,7 @@ body.pdf-standalone-page .reference-pdf-status {
     border: 0;
 }
 
-/* Incremental save status */
+/* Incremental save status — only offline / error (not routine Saved flashes) */
 .form-save-status {
     position: sticky;
     top: 0;
@@ -1353,6 +1372,14 @@ body.pdf-standalone-page .reference-pdf-status {
     border: 2px solid transparent;
 }
 
+.form-save-status[hidden],
+.form-save-status[data-state="idle"],
+.form-save-status[data-state="saving"],
+.form-save-status[data-state="saved"] {
+    display: none !important;
+}
+
+/* saving/saved styles retained for rare explicit use but kept hidden by default */
 .form-save-status[data-state="saving"] {
     background: #e8f0f8;
     border-color: var(--berton-info);

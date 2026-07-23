@@ -220,10 +220,17 @@ def serialize_reading(reading: Reading, form_type: str) -> dict[str, Any]:
     }
 
 
+_FIELD_LABELS = {
+    "initials": "Signature / initials",
+    "operator_identifier": "Operator",
+}
+
+
 def require_operator_identifier(value: str | None, *, field: str = "operator_identifier") -> str:
     identifier = (value or "").strip()
     if not identifier:
-        raise HTTPException(status_code=400, detail=f"{field} is required")
+        label = _FIELD_LABELS.get(field) or field.replace("_", " ").capitalize()
+        raise HTTPException(status_code=400, detail=f"{label} is required")
     return identifier
 
 
