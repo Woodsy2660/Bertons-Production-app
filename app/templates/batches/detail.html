@@ -119,13 +119,19 @@
 
         {# Pallet Tags print UI hidden until feature is production-ready (code + routes retained). #}
 
-        {# FOR CA 005 — cask runs only (not bottling) #}
+        {# Sterilising: FOR PK 026 (bottling) or FOR CA 005 (cask) — same-line attach only #}
         {% set is_cask_run = batch.line_type is defined and batch.line_type and batch.line_type.value == 'cask' %}
-        {% if is_cask_run %}
         <section id="sterilising" class="berton-card p-6">
-            <h2 class="section-title mb-2">Sterilising &amp; Pre-Start Check</h2>
+            <h2 class="section-title mb-2">
+                {% if is_cask_run %}Sterilising &amp; Pre-Start Check{% else %}Weekly Sterilising Check{% endif %}
+            </h2>
             <p class="text-muted mb-4">
+                {% if is_cask_run %}
                 FOR CA 005 is completed from the sterilising log (no run required), then attached here.
+                {% else %}
+                FOR PK 026 is completed from the sterilising log (no run required), then attached here.
+                {% endif %}
+                Only {{ 'cask' if is_cask_run else 'bottling' }}-line checks can be attached to this run.
             </p>
 
             {% if attached_sterilising %}
@@ -175,14 +181,13 @@
             </form>
             {% else %}
             <p class="berton-hint">
-                No checks available to attach.
-                <a href="/sterilising/new" class="text-primary underline">Create one</a>
-                or open the <a href="/sterilising" class="text-primary underline">sterilising log</a>.
+                No matching checks available to attach.
+                <a href="/sterilising/new?line={{ 'cask' if is_cask_run else 'bottling' }}" class="text-primary underline">Create one</a>
+                or open the <a href="/sterilising?line={{ 'cask' if is_cask_run else 'bottling' }}" class="text-primary underline">sterilising log</a>.
             </p>
             {% endif %}
             {% endif %}
         </section>
-        {% endif %}
 
         {% if role == 'manager' %}
         <section id="run-completion" class="berton-card p-6 run-completion-section">

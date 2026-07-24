@@ -1,4 +1,4 @@
-"""Standalone FOR CA 005 — Cask Line Sterilising & Pre-Start Check."""
+"""Standalone sterilising checks — FOR CA 005 (cask) and FOR PK 026 (bottling)."""
 
 from __future__ import annotations
 
@@ -11,19 +11,31 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.batch import LineType
+from app.models.db_enums import pg_enum
 
 if TYPE_CHECKING:
     from app.models.batch import Batch
 
 
 class SterilisingCheck(Base):
-    """Completed independently of a run; may attach to many runs later."""
+    """Completed independently of a run; may attach to many same-line-type runs."""
 
     __tablename__ = "sterilising_checks"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # Which paper form / production line this record belongs to
+    line_type: Mapped[LineType] = mapped_column(
+        pg_enum(LineType, "linetype"),
+        default=LineType.CASK,
+        nullable=False,
+        index=True,
+    )
+    # FOR PK 026 only — System 1 / System 2
+    system_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     operator_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     check_date: Mapped[date] = mapped_column(Date, nullable=False)
     check_time: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -39,8 +51,10 @@ class SterilisingCheck(Base):
     line_temp_c: Mapped[str | None] = mapped_column(String(20), nullable=True)
     line_duration_mins: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # FOR CA 005 only — daily pre-start
     filler_clean: Mapped[str | None] = mapped_column(String(1), nullable=True)
     carton_erector_clean: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    # FOR CA 005 QC initials; bottling uses operator_name as sign-off
     qc_sign_off: Mapped[str] = mapped_column(String(40), nullable=False, default="")
 
     created_by_role: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -55,9 +69,21 @@ class SterilisingCheck(Base):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def doc_number(self) -> str:
+        if self.line_type == LineType.BOTTLING:
+            return "FOR PK 026"
+        return "FOR CA 005"
+
+    @property
+    def form_title(self) -> str:
+        if self.line_type == LineType.BOTTLING:
+            return "Weekly Sterilising Check"
+        return "Cask Line Sterilising & Pre-Start Check"
+
 
 class RunSterilisingCheck(Base):
-    """Join: one sterilising record may attach to many runs."""
+    """Join: one sterilising record may attach to many runs (same line type)."""
 
     __tablename__ = "run_sterilising_checks"
     __table_args__ = (

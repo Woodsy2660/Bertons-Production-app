@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Weekly Sterilising Check</title>
+</head>
+<body>
+    {% include "_brand_header.html" %}
+
+    <table style="margin-bottom: 15px;">
+        <tr>
+            <th>Operator</th>
+            <td>{{ check.operator_name or '-' }}</td>
+            <th>Date</th>
+            <td>{{ check.check_date.isoformat() if check.check_date else '-' }}</td>
+            <th>Time</th>
+            <td>{% if check.check_time %}{{ check.check_time.strftime('%H:%M') }}{% else %}-{% endif %}</td>
+        </tr>
+        <tr>
+            <th>System</th>
+            <td colspan="5">
+                {% if check.system_id == 'system_1' %}System 1
+                {% elif check.system_id == 'system_2' %}System 2
+                {% else %}-{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <h3 style="margin: 12px 0 6px; font-size: 11pt;">Weekly Pre-Start Checks</h3>
+    <table>
+        <tr>
+            <th style="width: 70%;">Have the 0.65 µm and 0.45 µm filters been integrity tested as per SOP?</th>
+            <td>
+                {% if check.filters_integrity_tested == 'Y' %}Yes
+                {% elif check.filters_integrity_tested == 'N' %}No
+                {% else %}-{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <th>Filter</th>
+            <th style="width: 28%;">Pressure drop (mbar)</th>
+            <th style="width: 18%;">Pass? (Y/N)</th>
+        </tr>
+        {% for row in filter_readings %}
+        <tr>
+            <td>{{ row.get('label', row.get('key', '-')) }}</td>
+            <td>{{ row.get('pressure_mbar') or '-' }}</td>
+            <td>{{ row.get('pass_yn') or '-' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h3 style="margin: 12px 0 6px; font-size: 11pt;">Weekly Sterilising Checks</h3>
+    <table>
+        <tr>
+            <th style="width: 55%;">{{ lenticular_label }}</th>
+            <td>
+                {% if check.lenticular_temp_c or check.lenticular_duration_mins %}
+                {{ check.lenticular_temp_c or '-' }} °C for {{ check.lenticular_duration_mins or '-' }} mins
+                {% else %}-{% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>{{ line_label }}</th>
+            <td>
+                {% if check.line_temp_c or check.line_duration_mins %}
+                {{ check.line_temp_c or '-' }} °C for {{ check.line_duration_mins or '-' }} mins
+                {% else %}-{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 16px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 8px;">
+        {% if check.created_at %}
+        Submitted: {{ check.created_at.strftime('%Y-%m-%d %H:%M') }}
+        {% if check.created_by_role %} by {{ check.created_by_role|title }}{% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

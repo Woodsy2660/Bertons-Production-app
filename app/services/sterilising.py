@@ -1,4 +1,4 @@
-"""FOR CA 005 — standalone sterilising / pre-start checks + run attachment."""
+"""Standalone sterilising checks — FOR CA 005 (cask) + FOR PK 026 (bottling)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, time
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from jinja2 import Environment, FileSystemLoader
@@ -15,15 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.session import Role
-from app.models import Batch
+from app.models import Batch, LineType
 from app.models.sterilising_check import RunSterilisingCheck, SterilisingCheck
 from app.services.batch_lifecycle import can_write_forms
 from app.services.compilation import apply_form_title_logo
 
-DOC_NUMBER = "FOR CA 005"
-FORM_TITLE = "Cask Line Sterilising & Pre-Start Check"
+LineKey = Literal["cask", "bottling"]
 
-# Paper form filter rows (FOR CA 005).
+# Paper form filter rows — both lines use wine 0.45/0.65 and water 0.45/0.22 (PK 026 / CA 005 paper).
 DEFAULT_FILTER_ROWS: list[dict[str, str]] = [
     {"key": "wine_0_45", "label": "Wine filter 0.45 µm", "pressure_mbar": "", "pass_yn": ""},
     {"key": "wine_0_65", "label": "Wine filter 0.65 µm", "pressure_mbar": "", "pass_yn": ""},
@@ -31,9 +30,49 @@ DEFAULT_FILTER_ROWS: list[dict[str, str]] = [
     {"key": "water_0_22", "label": "Water filter 0.22 µm", "pressure_mbar": "", "pass_yn": ""},
 ]
 
+FORM_META = {
+    "cask": {
+        "doc_number": "FOR CA 005",
+        "form_title": "Cask Line Sterilising & Pre-Start Check",
+        "line_type": LineType.CASK,
+        "template": "sterilising_prestart.html",
+        "lenticular_label": "Lenticular housing and bypass line sterilisation",
+        "line_label": "0.65 / 0.45 / filler and return line sterilisation",
+    },
+    "bottling": {
+        "doc_number": "FOR PK 026",
+        "form_title": "Weekly Sterilising Check",
+        "line_type": LineType.BOTTLING,
+        "template": "sterilising_bottling.html",
+        "lenticular_label": "Lenticular housing, bypass line and return line sterilisation",
+        "line_label": "0.65 µm, 0.45 µm and filler sterilisation",
+    },
+}
+
 
 def empty_filter_readings() -> list[dict[str, str]]:
     return [dict(row) for row in DEFAULT_FILTER_ROWS]
+
+
+def parse_line_key(raw: str | None, *, default: LineKey = "cask") -> LineKey:
+    v = (raw or default).strip().lower()
+    if v in ("cask", "bottling"):
+        return v  # type: ignore[return-value]
+    raise HTTPException(status_code=400, detail="Line type must be cask or bottling")
+
+
+def line_type_from_batch(batch: Batch) -> LineType:
+    line = getattr(batch, "line_type", None)
+    if line is None:
+        return LineType.BOTTLING
+    if isinstance(line, LineType):
+        return line
+    val = getattr(line, "value", line)
+    return LineType.CASK if str(val).lower() == "cask" else LineType.BOTTLING
+
+
+def line_key_from_batch(batch: Batch) -> LineKey:
+    return "cask" if line_type_from_batch(batch) == LineType.CASK else "bottling"
 
 
 def _yn(value: str | None) -> str | None:
@@ -87,15 +126,14 @@ def build_filter_readings_from_form(form: dict[str, Any]) -> list[dict[str, str]
     return rows
 
 
-def payload_from_form(form: dict[str, Any]) -> dict[str, Any]:
+def payload_from_form(form: dict[str, Any], *, line_key: LineKey) -> dict[str, Any]:
     operator_name = str(form.get("operator_name", "") or "").strip()
-    qc = str(form.get("qc_sign_off", "") or "").strip()
     if not operator_name:
         raise HTTPException(status_code=400, detail="Sterilising operator name is required")
-    if not qc:
-        raise HTTPException(status_code=400, detail="QC sign-off is required")
 
-    return {
+    meta = FORM_META[line_key]
+    data: dict[str, Any] = {
+        "line_type": meta["line_type"],
         "operator_name": operator_name,
         "check_date": _parse_date(form.get("check_date")),
         "check_time": _parse_time(form.get("check_time")),
@@ -106,11 +144,32 @@ def payload_from_form(form: dict[str, Any]) -> dict[str, Any]:
         or None,
         "line_temp_c": str(form.get("line_temp_c", "") or "").strip() or None,
         "line_duration_mins": str(form.get("line_duration_mins", "") or "").strip() or None,
-        "filler_clean": _yn(form.get("filler_clean")),
-        "carton_erector_clean": _yn(form.get("carton_erector_clean")),
-        "qc_sign_off": qc,
         "notes": str(form.get("notes", "") or "").strip() or None,
+        "system_id": None,
+        "filler_clean": None,
+        "carton_erector_clean": None,
+        "qc_sign_off": "",
     }
+
+    if line_key == "bottling":
+        system = str(form.get("system_id", "") or "").strip().lower()
+        if system not in ("system_1", "system_2"):
+            raise HTTPException(
+                status_code=400,
+                detail="Which system is being sterilised is required (System 1 or System 2)",
+            )
+        data["system_id"] = system
+        # PK 026 has no separate QC row — operator name is the sign-off
+        data["qc_sign_off"] = operator_name
+    else:
+        qc = str(form.get("qc_sign_off", "") or "").strip()
+        if not qc:
+            raise HTTPException(status_code=400, detail="QC sign-off is required")
+        data["qc_sign_off"] = qc
+        data["filler_clean"] = _yn(form.get("filler_clean"))
+        data["carton_erector_clean"] = _yn(form.get("carton_erector_clean"))
+
+    return data
 
 
 async def create_sterilising_check(
@@ -118,8 +177,9 @@ async def create_sterilising_check(
     form: dict[str, Any],
     *,
     role: Role,
+    line_key: LineKey = "cask",
 ) -> SterilisingCheck:
-    data = payload_from_form(form)
+    data = payload_from_form(form, line_key=line_key)
     row = SterilisingCheck(
         **data,
         created_by_role=role,
@@ -135,13 +195,17 @@ async def list_sterilising_checks(
     db: AsyncSession,
     *,
     limit: int = 100,
+    line_type: LineType | None = None,
 ) -> list[SterilisingCheck]:
-    result = await db.execute(
+    q = (
         select(SterilisingCheck)
         .options(selectinload(SterilisingCheck.attachments).selectinload(RunSterilisingCheck.batch))
         .order_by(SterilisingCheck.check_date.desc(), SterilisingCheck.created_at.desc())
         .limit(limit)
     )
+    if line_type is not None:
+        q = q.where(SterilisingCheck.line_type == line_type)
+    result = await db.execute(q)
     return list(result.scalars().unique().all())
 
 
@@ -180,6 +244,12 @@ async def attach_to_batch(
         raise HTTPException(status_code=403, detail="This run is locked")
 
     check = await get_sterilising_check(db, check_id)
+    batch_line = line_type_from_batch(batch)
+    if check.line_type != batch_line:
+        raise HTTPException(
+            status_code=400,
+            detail="Sterilising check line type must match the run (cask vs bottling)",
+        )
 
     existing = await db.execute(
         select(RunSterilisingCheck)
@@ -224,23 +294,30 @@ async def detach_from_batch(
 
 
 def sterilising_context(check: SterilisingCheck) -> dict[str, Any]:
+    line_key: LineKey = "cask" if check.line_type == LineType.CASK else "bottling"
+    meta = FORM_META[line_key]
     return {
         "check": check,
-        "doc_number": DOC_NUMBER,
-        "form_name": FORM_TITLE,
+        "doc_number": check.doc_number,
+        "form_name": check.form_title,
         "filter_readings": check.filter_readings or empty_filter_readings(),
+        "lenticular_label": meta["lenticular_label"],
+        "line_label": meta["line_label"],
+        "line_key": line_key,
         "now": datetime.now(),
     }
 
 
 def render_sterilising_pdf(check: SterilisingCheck) -> bytes:
-    """Render FOR CA 005 to PDF (WeasyPrint preferred, xhtml2pdf fallback)."""
+    """Render sterilising check to PDF (WeasyPrint preferred, xhtml2pdf fallback)."""
+    line_key: LineKey = "cask" if check.line_type == LineType.CASK else "bottling"
+    template_name = FORM_META[line_key]["template"]
+
     templates_path = Path(__file__).parent.parent / "templates" / "pdf"
     env = Environment(loader=FileSystemLoader(str(templates_path)), autoescape=True)
-    template = env.get_template("sterilising_prestart.html")
+    template = env.get_template(template_name)
     html_content = template.render(**sterilising_context(check))
 
-    # Match station-form PDF chrome used by FOR CA 001–004 (title + doc number).
     css_content = """
         @page { size: A4 portrait; margin: 1cm; }
         html, body { font-family: Arial, sans-serif; font-size: 10pt; }

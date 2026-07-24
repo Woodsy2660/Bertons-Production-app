@@ -80,13 +80,16 @@ from app.services.storage import build_upload_path, read_bytes, save_bytes
 from app.services.form_prefill import build_form_context, extract_packing_size
 from app.services.pallet_tags import calculate_pallets, record_pallet_tag_print, total_tags_printed
 from app.services.sterilising import (
+    FORM_META,
     attach_to_batch as attach_sterilising_check,
     create_sterilising_check,
     detach_from_batch as detach_sterilising_check,
     empty_filter_readings,
     get_sterilising_check,
+    line_key_from_batch,
     list_checks_for_batch,
     list_sterilising_checks,
+    parse_line_key,
     render_sterilising_pdf,
 )
 from app.services.work_order_extraction import populate_header_from_work_order_pdf
@@ -426,12 +429,23 @@ async def sterilising_list(
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_operator_or_manager)],
     flash: str | None = None,
+    line: str | None = None,
 ):
-    checks = await list_sterilising_checks(db)
+    line_filter = None
+    line_type_filter = None
+    if line in ("cask", "bottling"):
+        line_filter = line
+        line_type_filter = LineType.CASK if line == "cask" else LineType.BOTTLING
+    checks = await list_sterilising_checks(db, line_type=line_type_filter)
     return templates.TemplateResponse(
         request,
         "sterilising/list.html",
-        {"checks": checks, "role": role, "flash": flash},
+        {
+            "checks": checks,
+            "role": role,
+            "flash": flash,
+            "line_filter": line_filter,
+        },
     )
 
 
@@ -439,7 +453,24 @@ async def sterilising_list(
 async def sterilising_new_form(
     request: Request,
     role: Annotated[Role, Depends(require_operator_or_manager)],
+    line: str | None = None,
 ):
+    # Step 1: no line chosen yet → pick Bottling or Cask
+    if not line or not str(line).strip():
+        return templates.TemplateResponse(
+            request,
+            "sterilising/choose.html",
+            {"role": role},
+        )
+    try:
+        line_key = parse_line_key(line, default="bottling")
+    except HTTPException:
+        return templates.TemplateResponse(
+            request,
+            "sterilising/choose.html",
+            {"role": role},
+        )
+    meta = FORM_META[line_key]
     return templates.TemplateResponse(
         request,
         "sterilising/form.html",
@@ -449,6 +480,11 @@ async def sterilising_new_form(
             "values": {},
             "filter_rows": empty_filter_readings(),
             "today": date.today().isoformat(),
+            "line_key": line_key,
+            "doc_number": meta["doc_number"],
+            "form_title": meta["form_title"],
+            "lenticular_label": meta["lenticular_label"],
+            "line_label": meta["line_label"],
         },
     )
 
@@ -458,10 +494,35 @@ async def sterilising_new_submit(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_operator_or_manager)],
+    line: str = "bottling",
 ):
     form = dict(await request.form())
     try:
-        check = await create_sterilising_check(db, form, role=role)
+        line_key = parse_line_key(form.get("line_type") or line, default="bottling")
+    except HTTPException as exc:
+        line_key = "bottling"
+        detail = exc.detail if isinstance(exc.detail, str) else "Invalid line type"
+        meta = FORM_META[line_key]
+        return templates.TemplateResponse(
+            request,
+            "sterilising/form.html",
+            {
+                "role": role,
+                "error": detail,
+                "values": form,
+                "filter_rows": empty_filter_readings(),
+                "today": date.today().isoformat(),
+                "line_key": line_key,
+                "doc_number": meta["doc_number"],
+                "form_title": meta["form_title"],
+                "lenticular_label": meta["lenticular_label"],
+                "line_label": meta["line_label"],
+            },
+            status_code=400,
+        )
+    meta = FORM_META[line_key]
+    try:
+        check = await create_sterilising_check(db, form, role=role, line_key=line_key)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Could not save check"
         return templates.TemplateResponse(
@@ -473,6 +534,11 @@ async def sterilising_new_submit(
                 "values": form,
                 "filter_rows": empty_filter_readings(),
                 "today": date.today().isoformat(),
+                "line_key": line_key,
+                "doc_number": meta["doc_number"],
+                "form_title": meta["form_title"],
+                "lenticular_label": meta["lenticular_label"],
+                "line_label": meta["line_label"],
             },
             status_code=400,
         )
@@ -491,6 +557,8 @@ async def sterilising_detail(
     flash: str | None = None,
 ):
     check = await get_sterilising_check(db, check_id)
+    line_key = "cask" if check.line_type == LineType.CASK else "bottling"
+    meta = FORM_META[line_key]
     return templates.TemplateResponse(
         request,
         "sterilising/detail.html",
@@ -498,6 +566,8 @@ async def sterilising_detail(
             "check": check,
             "role": role,
             "flash": "Saved." if flash == "saved" else flash,
+            "lenticular_label": meta["lenticular_label"],
+            "line_label": meta["line_label"],
         },
     )
 
@@ -522,12 +592,6 @@ async def sterilising_pdf(
     )
 
 
-def _batch_is_cask(batch: Batch) -> bool:
-    line = getattr(batch, "line_type", None)
-    line_val = line.value if hasattr(line, "value") else (line or "bottling")
-    return str(line_val).lower() == "cask"
-
-
 @app.post("/batches/{batch_id}/sterilising/attach")
 async def batch_attach_sterilising(
     batch_id: uuid.UUID,
@@ -539,15 +603,11 @@ async def batch_attach_sterilising(
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if not _batch_is_cask(batch):
-        raise HTTPException(
-            status_code=400,
-            detail="Sterilising checks only apply to cask runs",
-        )
     try:
         check_uuid = uuid.UUID(sterilising_check_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid sterilising check") from exc
+    # attach_to_batch enforces same line type (cask vs bottling)
     await attach_sterilising_check(db, batch, check_uuid, role=role)
     return RedirectResponse(url=f"/batches/{batch_id}#sterilising", status_code=303)
 
@@ -563,11 +623,6 @@ async def batch_detach_sterilising(
     batch = result.scalar_one_or_none()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    if not _batch_is_cask(batch):
-        raise HTTPException(
-            status_code=400,
-            detail="Sterilising checks only apply to cask runs",
-        )
     await detach_sterilising_check(db, batch, check_id, role=role)
     return RedirectResponse(url=f"/batches/{batch_id}#sterilising", status_code=303)
 
@@ -1131,19 +1186,16 @@ async def batch_detail(
         if info["status"] != "submitted"
     ]
 
-    # FOR CA 005 is cask-line only — never surface on bottling runs
-    is_cask_run = line_val == "cask"
-    attached_sterilising = []
-    attachable_checks = []
-    if is_cask_run:
-        attached_sterilising = [
-            link.sterilising_check
-            for link in batch.sterilising_attachments
-            if link.sterilising_check is not None
-        ]
-        all_checks = await list_sterilising_checks(db, limit=40)
-        attached_ids = {c.id for c in attached_sterilising}
-        attachable_checks = [c for c in all_checks if c.id not in attached_ids]
+    # Sterilising: FOR PK 026 (bottling) or FOR CA 005 (cask) — filter attach pool by line
+    attached_sterilising = [
+        link.sterilising_check
+        for link in batch.sterilising_attachments
+        if link.sterilising_check is not None
+    ]
+    run_line_type = LineType.CASK if line_val == "cask" else LineType.BOTTLING
+    all_checks = await list_sterilising_checks(db, limit=40, line_type=run_line_type)
+    attached_ids = {c.id for c in attached_sterilising}
+    attachable_checks = [c for c in all_checks if c.id not in attached_ids]
 
     return templates.TemplateResponse(
         request,
