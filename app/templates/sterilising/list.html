@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Sterilising Checks - Berton Bottling{% endblock %}
+{% block body_attrs %}data-page-context="Sterilising checks log"{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <a href="/" class="back-link">&larr; Back to Runs</a>
+            <h1 class="text-2xl text-primary font-semibold mt-2">Sterilising &amp; Pre-Start Checks</h1>
+            <p class="text-muted mt-1">FOR CA 005 — complete without a run, then attach when the job is posted.</p>
+        </div>
+        <a href="/sterilising/new" class="btn-primary">New check</a>
+    </div>
+
+    {% if flash %}
+    <div class="berton-alert berton-alert-info">{{ flash }}</div>
+    {% endif %}
+
+    <div class="berton-card overflow-hidden">
+        {% if checks %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-base">
+                <thead>
+                    <tr class="border-b border-[var(--berton-border)] bg-[var(--berton-bg-subtle)]">
+                        <th class="text-left px-4 py-3">Date</th>
+                        <th class="text-left px-4 py-3">Time</th>
+                        <th class="text-left px-4 py-3">Operator</th>
+                        <th class="text-left px-4 py-3">QC</th>
+                        <th class="text-left px-4 py-3">Attached to</th>
+                        <th class="text-right px-4 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for check in checks %}
+                    <tr class="border-b border-[var(--berton-border)]">
+                        <td class="px-4 py-3 font-medium">{{ check.check_date.strftime('%d %b %Y') }}</td>
+                        <td class="px-4 py-3">
+                            {% if check.check_time %}{{ check.check_time.strftime('%H:%M') }}{% else %}—{% endif %}
+                        </td>
+                        <td class="px-4 py-3">{{ check.operator_name }}</td>
+                        <td class="px-4 py-3">{{ check.qc_sign_off }}</td>
+                        <td class="px-4 py-3">
+                            {% set runs = check.attachments | map(attribute='batch') | list %}
+                            {% if runs %}
+                                {% for b in runs %}
+                                <a href="/batches/{{ b.id }}" class="text-primary underline">{{ b.run_number }}</a>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            {% else %}
+                            <span class="status-badge status-in-progress">Unattached</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <a href="/sterilising/{{ check.id }}" class="btn-secondary btn-sm">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-muted">
+            No sterilising checks yet.
+            <a href="/sterilising/new" class="text-primary underline ml-1">Record the first one</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

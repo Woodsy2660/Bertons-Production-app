@@ -39,12 +39,13 @@ Started {{ format_sydney(batch.created_at) }}
         <div>
             <h1 class="dashboard-title">Bottling Runs</h1>
         </div>
-        {% if role == 'manager' %}
-        <div class="flex flex-wrap gap-3">
+        <div class="flex flex-wrap gap-3 items-center">
+            <a href="/sterilising" class="btn-secondary text-lg">Sterilising</a>
+            {% if role == 'manager' %}
             <a href="/runs/history" class="btn-secondary text-lg">Run history</a>
             <a href="/batches/new" class="btn-primary text-lg">+ Start New Run</a>
+            {% endif %}
         </div>
-        {% endif %}
     </header>
 
     {% if active_batches %}

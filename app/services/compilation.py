@@ -399,6 +399,49 @@ async def compile_batch(
                 "filenames": filenames,
             }
 
+    # FOR CA 005 — cask runs only (never included on bottling packs)
+    line = getattr(batch, "line_type", None)
+    line_val = line.value if hasattr(line, "value") else (line or "bottling")
+    if str(line_val).lower() == "cask":
+        sterilising_pages = 0
+        sterilising_ids: list[str] = []
+        try:
+            from app.services.sterilising import list_checks_for_batch, render_sterilising_pdf
+
+            attached_checks = await list_checks_for_batch(db, batch.id)
+            if attached_checks:
+                for sc in attached_checks:
+                    try:
+                        sc_pdf = render_sterilising_pdf(sc)
+                        reader = PdfReader(BytesIO(sc_pdf))
+                        for page in reader.pages:
+                            pdf_writer.add_page(page)
+                        sterilising_pages += len(reader.pages)
+                        sterilising_ids.append(str(sc.id))
+                    except Exception as exc:
+                        slot_manifest[f"sterilising_{sc.id}"] = {
+                            "type": "sterilising_check",
+                            "error": str(exc),
+                        }
+                slot_manifest["sterilising_checks"] = {
+                    "type": "sterilising_checks",
+                    "count": len(attached_checks),
+                    "pages": sterilising_pages,
+                    "ids": sterilising_ids,
+                }
+            else:
+                # Explicit none-attached state (never a silent blank form page)
+                slot_manifest["sterilising_checks"] = {
+                    "type": "sterilising_checks",
+                    "count": 0,
+                    "none_attached": True,
+                }
+        except Exception as exc:
+            slot_manifest["sterilising_checks"] = {
+                "type": "sterilising_checks",
+                "error": str(exc),
+            }
+
     # Generate output filename
     header = batch.header
     stock_item = header.stock_item if header else ""

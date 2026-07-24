@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Sterilising Check {{ check.check_date }} - Berton Bottling{% endblock %}
+{% block body_attrs %}data-page-context="Sterilising check detail · FOR CA 005"{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <a href="/sterilising" class="back-link">&larr; Back to sterilising log</a>
+            <h1 class="text-2xl text-primary font-semibold mt-2">Sterilising check</h1>
+            <p class="text-muted">FOR CA 005 · {{ check.check_date.strftime('%d %b %Y') }}
+                {% if check.check_time %} · {{ check.check_time.strftime('%H:%M') }}{% endif %}
+            </p>
+        </div>
+        <a href="/sterilising/{{ check.id }}/pdf" class="btn-secondary" target="_blank" rel="noopener">View PDF</a>
+    </div>
+
+    <div class="berton-card p-6 space-y-3">
+        <h2 class="text-lg text-primary font-semibold">Header</h2>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><dt class="text-muted text-sm">Operator</dt><dd class="font-medium">{{ check.operator_name }}</dd></div>
+            <div><dt class="text-muted text-sm">QC sign-off</dt><dd class="font-medium">{{ check.qc_sign_off }}</dd></div>
+            <div><dt class="text-muted text-sm">Recorded by</dt><dd>{{ check.created_by_role|title }}</dd></div>
+            <div><dt class="text-muted text-sm">Recorded at</dt>
+                <dd>{{ check.created_at.strftime('%d %b %Y %H:%M') if check.created_at else '—' }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="berton-card p-6 space-y-4">
+        <h2 class="text-lg text-primary font-semibold">Weekly Sterilising Checks</h2>
+        <p>
+            Integrity tested as per SOP:
+            <strong>
+                {% if check.filters_integrity_tested == 'Y' %}Yes
+                {% elif check.filters_integrity_tested == 'N' %}No
+                {% else %}—{% endif %}
+            </strong>
+        </p>
+        <table class="min-w-full text-base border border-[var(--berton-border)]">
+            <thead>
+                <tr class="bg-[var(--berton-bg-subtle)]">
+                    <th class="text-left px-3 py-2">Filter</th>
+                    <th class="text-left px-3 py-2">Pressure (mbar)</th>
+                    <th class="text-left px-3 py-2">Pass</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in check.filter_readings or [] %}
+                <tr class="border-t border-[var(--berton-border)]">
+                    <td class="px-3 py-2">{{ row.get('label', '—') }}</td>
+                    <td class="px-3 py-2">{{ row.get('pressure_mbar') or '—' }}</td>
+                    <td class="px-3 py-2">{{ row.get('pass_yn') or '—' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="px-3 py-3 text-muted">No filter readings</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p>
+            Lenticular housing &amp; bypass:
+            <strong>{{ check.lenticular_temp_c or '—' }} °C</strong> for
+            <strong>{{ check.lenticular_duration_mins or '—' }} mins</strong>
+        </p>
+        <p>
+            0.65 / 0.45 / filler &amp; return:
+            <strong>{{ check.line_temp_c or '—' }} °C</strong> for
+            <strong>{{ check.line_duration_mins or '—' }} mins</strong>
+        </p>
+    </div>
+
+    <div class="berton-card p-6 space-y-3">
+        <h2 class="text-lg text-primary font-semibold">Daily Pre-Start Checks</h2>
+        <p>Filler clean:
+            <strong>
+                {% if check.filler_clean == 'Y' %}Yes{% elif check.filler_clean == 'N' %}No{% else %}—{% endif %}
+            </strong>
+        </p>
+        <p>Carton erector clean:
+            <strong>
+                {% if check.carton_erector_clean == 'Y' %}Yes{% elif check.carton_erector_clean == 'N' %}No{% else %}—{% endif %}
+            </strong>
+        </p>
+        {% if check.notes %}
+        <p class="text-muted">Notes: {{ check.notes }}</p>
+        {% endif %}
+    </div>
+
+    <div class="berton-card p-6">
+        <h2 class="text-lg text-primary font-semibold mb-3">Attached runs</h2>
+        {% if check.attachments %}
+        <ul class="space-y-2">
+            {% for link in check.attachments %}
+            <li>
+                <a href="/batches/{{ link.batch.id }}" class="text-primary underline">
+                    Run {{ link.batch.run_number }}
+                </a>
+                <span class="text-muted text-sm">
+                    · attached {{ link.attached_at.strftime('%d %b %Y') if link.attached_at else '' }}
+                    by {{ link.attached_by_role|title }}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">Not attached to any run yet. Attach from a run’s page when the job is posted.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

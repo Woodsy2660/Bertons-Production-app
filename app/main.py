@@ -79,6 +79,16 @@ from app.services.form_persistence import (
 from app.services.storage import build_upload_path, read_bytes, save_bytes
 from app.services.form_prefill import build_form_context, extract_packing_size
 from app.services.pallet_tags import calculate_pallets, record_pallet_tag_print, total_tags_printed
+from app.services.sterilising import (
+    attach_to_batch as attach_sterilising_check,
+    create_sterilising_check,
+    detach_from_batch as detach_sterilising_check,
+    empty_filter_readings,
+    get_sterilising_check,
+    list_checks_for_batch,
+    list_sterilising_checks,
+    render_sterilising_pdf,
+)
 from app.services.work_order_extraction import populate_header_from_work_order_pdf
 from app.services.work_order_parser import (
     compute_pallet_count,
@@ -207,6 +217,10 @@ async def database_connection_os_error_handler(request: Request, exc: OSError) -
 upload_path = Path(settings.upload_dir)
 upload_path.mkdir(exist_ok=True)
 Path(settings.compiled_output_dir).mkdir(parents=True, exist_ok=True)
+
+# Pallet-tag print UI is parked until the feature is production-ready.
+# Services, models, and templates remain; flip True to re-enable screens/routes.
+PALLET_TAGS_UI_ENABLED = False
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
@@ -399,6 +413,163 @@ async def submit_feedback(
 
     sep = "&" if "?" in dest else "?"
     return RedirectResponse(url=f"{dest}{sep}feedback=ok", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Sterilising / pre-start checks (FOR CA 005) — standalone, then attach to runs
+# ---------------------------------------------------------------------------
+
+
+@app.get("/sterilising")
+async def sterilising_list(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    flash: str | None = None,
+):
+    checks = await list_sterilising_checks(db)
+    return templates.TemplateResponse(
+        request,
+        "sterilising/list.html",
+        {"checks": checks, "role": role, "flash": flash},
+    )
+
+
+@app.get("/sterilising/new")
+async def sterilising_new_form(
+    request: Request,
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    return templates.TemplateResponse(
+        request,
+        "sterilising/form.html",
+        {
+            "role": role,
+            "error": None,
+            "values": {},
+            "filter_rows": empty_filter_readings(),
+            "today": date.today().isoformat(),
+        },
+    )
+
+
+@app.post("/sterilising/new")
+async def sterilising_new_submit(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    form = dict(await request.form())
+    try:
+        check = await create_sterilising_check(db, form, role=role)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Could not save check"
+        return templates.TemplateResponse(
+            request,
+            "sterilising/form.html",
+            {
+                "role": role,
+                "error": detail,
+                "values": form,
+                "filter_rows": empty_filter_readings(),
+                "today": date.today().isoformat(),
+            },
+            status_code=400,
+        )
+    return RedirectResponse(
+        url=f"/sterilising/{check.id}?flash=saved",
+        status_code=303,
+    )
+
+
+@app.get("/sterilising/{check_id}")
+async def sterilising_detail(
+    request: Request,
+    check_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    flash: str | None = None,
+):
+    check = await get_sterilising_check(db, check_id)
+    return templates.TemplateResponse(
+        request,
+        "sterilising/detail.html",
+        {
+            "check": check,
+            "role": role,
+            "flash": "Saved." if flash == "saved" else flash,
+        },
+    )
+
+
+@app.get("/sterilising/{check_id}/pdf")
+async def sterilising_pdf(
+    check_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    check = await get_sterilising_check(db, check_id)
+    try:
+        pdf_bytes = render_sterilising_pdf(check)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not render PDF") from exc
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="FOR-CA-005-{check.check_date}.pdf"'
+        },
+    )
+
+
+def _batch_is_cask(batch: Batch) -> bool:
+    line = getattr(batch, "line_type", None)
+    line_val = line.value if hasattr(line, "value") else (line or "bottling")
+    return str(line_val).lower() == "cask"
+
+
+@app.post("/batches/{batch_id}/sterilising/attach")
+async def batch_attach_sterilising(
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+    sterilising_check_id: str = Form(...),
+):
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not _batch_is_cask(batch):
+        raise HTTPException(
+            status_code=400,
+            detail="Sterilising checks only apply to cask runs",
+        )
+    try:
+        check_uuid = uuid.UUID(sterilising_check_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid sterilising check") from exc
+    await attach_sterilising_check(db, batch, check_uuid, role=role)
+    return RedirectResponse(url=f"/batches/{batch_id}#sterilising", status_code=303)
+
+
+@app.post("/batches/{batch_id}/sterilising/{check_id}/detach")
+async def batch_detach_sterilising(
+    batch_id: uuid.UUID,
+    check_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+):
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not _batch_is_cask(batch):
+        raise HTTPException(
+            status_code=400,
+            detail="Sterilising checks only apply to cask runs",
+        )
+    await detach_sterilising_check(db, batch, check_id, role=role)
+    return RedirectResponse(url=f"/batches/{batch_id}#sterilising", status_code=303)
 
 
 @app.get("/feedback")
@@ -894,6 +1065,8 @@ async def batch_detail(
     role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
     """Show batch detail page."""
+    from app.models.sterilising_check import RunSterilisingCheck
+
     result = await db.execute(
         select(Batch)
         .options(
@@ -902,6 +1075,9 @@ async def batch_detail(
             selectinload(Batch.form_instances).selectinload(FormInstance.readings),
             selectinload(Batch.compilations),
             selectinload(Batch.pallet_tag_prints),
+            selectinload(Batch.sterilising_attachments).selectinload(
+                RunSterilisingCheck.sterilising_check
+            ),
         )
         .where(Batch.id == batch_id)
     )
@@ -955,6 +1131,20 @@ async def batch_detail(
         if info["status"] != "submitted"
     ]
 
+    # FOR CA 005 is cask-line only — never surface on bottling runs
+    is_cask_run = line_val == "cask"
+    attached_sterilising = []
+    attachable_checks = []
+    if is_cask_run:
+        attached_sterilising = [
+            link.sterilising_check
+            for link in batch.sterilising_attachments
+            if link.sterilising_check is not None
+        ]
+        all_checks = await list_sterilising_checks(db, limit=40)
+        attached_ids = {c.id for c in attached_sterilising}
+        attachable_checks = [c for c in all_checks if c.id not in attached_ids]
+
     return templates.TemplateResponse(
         request,
         "batches/detail.html",
@@ -972,7 +1162,9 @@ async def batch_detail(
             "can_edit_forms": can_write_forms(batch, role),
             "can_manage_documents": can_upload_documents(batch, role),
             "can_reopen": can_reopen(batch, role),
-            "can_print_pallet_tags": work_order is not None,
+            "can_print_pallet_tags": PALLET_TAGS_UI_ENABLED and work_order is not None,
+            "attached_sterilising": attached_sterilising,
+            "attachable_sterilising": attachable_checks,
             "pallet_calc": calculate_pallets(batch),
             "tags_printed_total": sum(p.tags_printed for p in batch.pallet_tag_prints),
             "pending_forms": pending_forms,
@@ -987,6 +1179,8 @@ async def pallet_tags_page(
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
+    if not PALLET_TAGS_UI_ENABLED:
+        return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
     result = await db.execute(
         select(Batch)
         .options(
@@ -1031,6 +1225,8 @@ async def pallet_tags_print(
     tags_to_print: int = Form(...),
     note: str = Form(""),
 ):
+    if not PALLET_TAGS_UI_ENABLED:
+        return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
     result = await db.execute(
         select(Batch)
         .options(selectinload(Batch.header), selectinload(Batch.uploaded_documents))
@@ -1064,6 +1260,8 @@ async def pallet_tags_pdf(
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Annotated[Role, Depends(require_operator_or_manager)],
 ):
+    if not PALLET_TAGS_UI_ENABLED:
+        return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
     result = await db.execute(
         select(PalletTagPrint)
         .where(PalletTagPrint.id == print_id)

@@ -10,6 +10,7 @@ from app.models.feedback_report import (
     FeedbackReportType,
     FeedbackStatus,
 )
+from app.models.sterilising_check import RunSterilisingCheck, SterilisingCheck
 
 __all__ = [
     "Batch",
@@ -29,4 +30,6 @@ __all__ = [
     "FeedbackReport",
     "FeedbackReportType",
     "FeedbackStatus",
+    "SterilisingCheck",
+    "RunSterilisingCheck",
 ]

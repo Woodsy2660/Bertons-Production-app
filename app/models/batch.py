@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.uploaded_document import UploadedDocument
     from app.models.compilation import Compilation
     from app.models.pallet_tag_print import PalletTagPrint
+    from app.models.sterilising_check import RunSterilisingCheck
 
 
 class BatchStatus(str, PyEnum):
@@ -78,6 +79,11 @@ class Batch(Base):
     )
     pallet_tag_prints: Mapped[list["PalletTagPrint"]] = relationship(
         "PalletTagPrint", back_populates="batch", cascade="all, delete-orphan"
+    )
+    sterilising_attachments: Mapped[list["RunSterilisingCheck"]] = relationship(
+        "RunSterilisingCheck",
+        back_populates="batch",
+        cascade="all, delete-orphan",
     )
 
 

@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}New Sterilising Check - Berton Bottling{% endblock %}
+{% block body_attrs %}data-page-context="New sterilising check · FOR CA 005"{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+    <div>
+        <a href="/sterilising" class="back-link">&larr; Back to sterilising log</a>
+        <h1 class="text-2xl text-primary font-semibold mt-2">Sterilising &amp; Pre-Start Check</h1>
+        <p class="text-muted">FOR CA 005 — no run required</p>
+    </div>
+
+    {% if error %}
+    <div class="berton-alert berton-alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/sterilising/new" class="space-y-6">
+        <div class="berton-card p-6 space-y-4">
+            <h2 class="text-lg text-primary font-semibold">Header</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-3">
+                    <label class="berton-label" for="operator_name">Sterilising operator name <span class="text-red-600">*</span></label>
+                    <input type="text" id="operator_name" name="operator_name" required
+                           class="berton-input touch-target" value="{{ values.operator_name or '' }}"
+                           maxlength="120" autocomplete="name">
+                </div>
+                <div>
+                    <label class="berton-label" for="check_date">Date <span class="text-red-600">*</span></label>
+                    <input type="date" id="check_date" name="check_date" required
+                           class="berton-input touch-target" value="{{ values.check_date or today }}">
+                </div>
+                <div>
+                    <label class="berton-label" for="check_time">Time</label>
+                    <input type="time" id="check_time" name="check_time"
+                           class="berton-input touch-target" value="{{ values.check_time or '' }}">
+                </div>
+            </div>
+        </div>
+
+        <div class="berton-card p-6 space-y-5">
+            <div>
+                <h2 class="text-lg text-primary font-semibold">Weekly Sterilising Checks</h2>
+                <p class="berton-hint">Filter integrity and sterilisation temperature / duration.</p>
+            </div>
+
+            <div>
+                <span class="berton-label">Have the 0.65 and 0.45 filters been integrity tested as per SOP?</span>
+                <div class="flex flex-wrap gap-4 mt-2">
+                    <label class="inline-flex items-center gap-2 touch-target">
+                        <input type="radio" name="filters_integrity_tested" value="Y"
+                               {% if values.filters_integrity_tested == 'Y' %}checked{% endif %}>
+                        <span>Yes</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 touch-target">
+                        <input type="radio" name="filters_integrity_tested" value="N"
+                               {% if values.filters_integrity_tested == 'N' %}checked{% endif %}>
+                        <span>No</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-base border border-[var(--berton-border)]">
+                    <thead>
+                        <tr class="bg-[var(--berton-bg-subtle)]">
+                            <th class="text-left px-3 py-2 border-b">Filter</th>
+                            <th class="text-left px-3 py-2 border-b w-40">Pressure drop (mbar)</th>
+                            <th class="text-left px-3 py-2 border-b w-28">Pass? (Y/N)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in filter_rows %}
+                        <tr class="border-b border-[var(--berton-border)]">
+                            <td class="px-3 py-2">{{ row.label }}</td>
+                            <td class="px-3 py-2">
+                                <input type="text" name="filter_{{ row.key }}_pressure"
+                                       class="berton-input touch-target"
+                                       value="{{ values.get('filter_' ~ row.key ~ '_pressure', '') }}"
+                                       inputmode="decimal">
+                            </td>
+                            <td class="px-3 py-2">
+                                <select name="filter_{{ row.key }}_pass" class="berton-input touch-target">
+                                    <option value=""></option>
+                                    <option value="Y" {% if values.get('filter_' ~ row.key ~ '_pass') == 'Y' %}selected{% endif %}>Y</option>
+                                    <option value="N" {% if values.get('filter_' ~ row.key ~ '_pass') == 'N' %}selected{% endif %}>N</option>
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="berton-label" for="lenticular_temp_c">Lenticular housing &amp; bypass — °C</label>
+                    <input type="text" id="lenticular_temp_c" name="lenticular_temp_c"
+                           class="berton-input touch-target" value="{{ values.lenticular_temp_c or '' }}"
+                           placeholder="e.g. 85" inputmode="decimal">
+                </div>
+                <div>
+                    <label class="berton-label" for="lenticular_duration_mins">Lenticular housing &amp; bypass — mins</label>
+                    <input type="text" id="lenticular_duration_mins" name="lenticular_duration_mins"
+                           class="berton-input touch-target" value="{{ values.lenticular_duration_mins or '' }}"
+                           placeholder="e.g. 20" inputmode="numeric">
+                </div>
+                <div>
+                    <label class="berton-label" for="line_temp_c">0.65 / 0.45 / filler &amp; return — °C</label>
+                    <input type="text" id="line_temp_c" name="line_temp_c"
+                           class="berton-input touch-target" value="{{ values.line_temp_c or '' }}"
+                           placeholder="e.g. 85" inputmode="decimal">
+                </div>
+                <div>
+                    <label class="berton-label" for="line_duration_mins">0.65 / 0.45 / filler &amp; return — mins</label>
+                    <input type="text" id="line_duration_mins" name="line_duration_mins"
+                           class="berton-input touch-target" value="{{ values.line_duration_mins or '' }}"
+                           placeholder="e.g. 20" inputmode="numeric">
+                </div>
+            </div>
+        </div>
+
+        <div class="berton-card p-6 space-y-5">
+            <div>
+                <h2 class="text-lg text-primary font-semibold">Daily Pre-Start Checks</h2>
+                <p class="berton-hint">Cleanliness of filler and carton erector areas.</p>
+            </div>
+
+            <div>
+                <span class="berton-label">Is the Filler and surroundings clean, free of wine and debris?</span>
+                <div class="flex flex-wrap gap-4 mt-2">
+                    <label class="inline-flex items-center gap-2 touch-target">
+                        <input type="radio" name="filler_clean" value="Y"
+                               {% if values.filler_clean == 'Y' %}checked{% endif %}>
+                        <span>Yes</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 touch-target">
+                        <input type="radio" name="filler_clean" value="N"
+                               {% if values.filler_clean == 'N' %}checked{% endif %}>
+                        <span>No</span>
+                    </label>
+                </div>
+            </div>
+
+            <div>
+                <span class="berton-label">Is the Carton Erector and surroundings clean, free of wine and debris?</span>
+                <div class="flex flex-wrap gap-4 mt-2">
+                    <label class="inline-flex items-center gap-2 touch-target">
+                        <input type="radio" name="carton_erector_clean" value="Y"
+                               {% if values.carton_erector_clean == 'Y' %}checked{% endif %}>
+                        <span>Yes</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 touch-target">
+                        <input type="radio" name="carton_erector_clean" value="N"
+                               {% if values.carton_erector_clean == 'N' %}checked{% endif %}>
+                        <span>No</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="berton-card p-6 space-y-4">
+            <h2 class="text-lg text-primary font-semibold">Sign-off</h2>
+            <div>
+                <label class="berton-label" for="qc_sign_off">Operators QC Sign Off <span class="text-red-600">*</span></label>
+                <input type="text" id="qc_sign_off" name="qc_sign_off" required
+                       class="berton-input touch-target" value="{{ values.qc_sign_off or '' }}"
+                       maxlength="40" autocomplete="off" placeholder="Initials">
+            </div>
+            <div>
+                <label class="berton-label" for="notes">Notes (optional)</label>
+                <textarea id="notes" name="notes" rows="2" class="berton-input">{{ values.notes or '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 justify-end">
+            <a href="/sterilising" class="btn-secondary text-center">Cancel</a>
+            <button type="submit" class="btn-primary px-8">Save check</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

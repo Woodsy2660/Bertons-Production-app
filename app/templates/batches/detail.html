@@ -117,19 +117,70 @@
             </div>
         </section>
 
-        {% if can_print_pallet_tags %}
-        <section class="berton-card p-6">
-            <h2 class="section-title mb-2">Pallet Tags</h2>
+        {# Pallet Tags print UI hidden until feature is production-ready (code + routes retained). #}
+
+        {# FOR CA 005 — cask runs only (not bottling) #}
+        {% set is_cask_run = batch.line_type is defined and batch.line_type and batch.line_type.value == 'cask' %}
+        {% if is_cask_run %}
+        <section id="sterilising" class="berton-card p-6">
+            <h2 class="section-title mb-2">Sterilising &amp; Pre-Start Check</h2>
             <p class="text-muted mb-4">
-                {% if pallet_calc.withheld %}
-                {{ pallet_calc.reason }}
-                {% else %}
-                Calculated pallets: <strong>{{ pallet_calc.pallets }}</strong>
-                ({{ pallet_calc.run_quantity }} cartons ÷ {{ pallet_calc.cartons_per_pallet }} per pallet).
-                {% endif %}
-                {% if tags_printed_total %} Printed to date: <strong>{{ tags_printed_total }}</strong>.{% endif %}
+                FOR CA 005 is completed from the sterilising log (no run required), then attached here.
             </p>
-            <a href="/batches/{{ batch.id }}/pallet-tags" class="btn-primary">Print Pallet Tags</a>
+
+            {% if attached_sterilising %}
+            <ul class="space-y-3 mb-4">
+                {% for check in attached_sterilising %}
+                <li class="flex flex-wrap items-center justify-between gap-3 border border-[var(--berton-border)] rounded-md p-3">
+                    <div>
+                        <a href="/sterilising/{{ check.id }}" class="font-semibold text-primary underline">
+                            {{ check.check_date.strftime('%d %b %Y') }}
+                            {% if check.check_time %} · {{ check.check_time.strftime('%H:%M') }}{% endif %}
+                        </a>
+                        <p class="text-muted text-sm">{{ check.operator_name }} · QC {{ check.qc_sign_off }}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a href="/sterilising/{{ check.id }}/pdf" class="btn-secondary btn-sm" target="_blank" rel="noopener">PDF</a>
+                        {% if can_edit_forms %}
+                        <form action="/batches/{{ batch.id }}/sterilising/{{ check.id }}/detach" method="POST">
+                            <button type="submit" class="btn-secondary btn-sm">Detach</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="berton-hint mb-4">No sterilising check attached. Compiled PDF will note none attached.</p>
+            {% endif %}
+
+            {% if can_edit_forms %}
+            {% if attachable_sterilising %}
+            <form action="/batches/{{ batch.id }}/sterilising/attach" method="POST" class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+                <div class="flex-1">
+                    <label class="berton-label" for="sterilising_check_id">Attach existing check</label>
+                    <select id="sterilising_check_id" name="sterilising_check_id" required class="berton-input touch-target">
+                        <option value="">Select a check…</option>
+                        {% for check in attachable_sterilising %}
+                        <option value="{{ check.id }}">
+                            {{ check.check_date.strftime('%d %b %Y') }}
+                            {% if check.check_time %} {{ check.check_time.strftime('%H:%M') }}{% endif %}
+                            — {{ check.operator_name }}
+                            {% if not check.attachments %} (unattached){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Attach</button>
+            </form>
+            {% else %}
+            <p class="berton-hint">
+                No checks available to attach.
+                <a href="/sterilising/new" class="text-primary underline">Create one</a>
+                or open the <a href="/sterilising" class="text-primary underline">sterilising log</a>.
+            </p>
+            {% endif %}
+            {% endif %}
         </section>
         {% endif %}
 
