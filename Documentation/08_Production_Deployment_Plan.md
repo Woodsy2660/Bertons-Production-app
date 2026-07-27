@@ -140,7 +140,7 @@ and `is_production` is true whenever `DEBUG=false`. Tablets use plain HTTP → b
 |--------|----------|
 | **A (recommended)** | Add `SESSION_HTTPS_ONLY` / `COOKIE_SECURE` env (default `false`). Set `true` only when TLS is in front. Keep `DEBUG=false` in prod. |
 | B | Derive from `FORCE_HTTPS` or presence of reverse proxy headers. |
-| C | Terminate TLS on Caddy/nginx on the VM and keep Secure cookies. More moving parts; HTTPS not required for MVP. |
+| C | Terminate TLS on Nginx Proxy Manager (or similar) on the VM and keep Secure cookies. More moving parts; HTTPS not required for MVP. |
 
 Also set session cookie `same_site="lax"` (already) and document that tablets must use the host IP URL consistently (no mixed hostname/IP).
 

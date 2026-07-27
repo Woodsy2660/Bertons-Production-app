@@ -2,6 +2,8 @@
 #
 # Production VM (after git pull):
 #   sudo docker compose up -d --build
+# TLS / reverse proxy is handled outside this compose stack
+# (e.g. Nginx Proxy Manager on BV-AZ-DockerHost01).
 #
 # Local app-on-host (dev):
 #   docker compose up -d db
@@ -36,7 +38,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Port 8000 for HTTP (tablets / transition); Caddy also serves 80/443
+    # App listens on 8000; reverse proxy (NPM etc.) points at this host:port
     ports:
       - "${APP_PORT:-8000}:8000"
     env_file:
@@ -78,26 +80,5 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: berton-caddy
-    depends_on:
-      - web
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
 volumes:
   postgres_data:
-  caddy_data:
-  caddy_config:
