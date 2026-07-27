@@ -10,13 +10,63 @@
     const SCAN_CHAR_GAP_MS = 80;
     const MIN_CODE_LENGTH = 2;
     const HTML5_QRCODE_URL = "/static/js/vendor/html5-qrcode.min.js";
-    /** Camera: square QR / Data Matrix on label (left of batch number). */
-    const CAMERA_BARCODE_FORMATS = ["qr_code", "data_matrix"];
 
-    const CAMERA_HINT =
-        "Scan the square QR code on the label — it sits to the left of the printed batch number.";
-    const CAMERA_HINT_LIVE =
-        "Fill the gold square with the QR code only (not the batch number text).";
+    /** Form fields: square QR / Data Matrix on label (left of batch number). */
+    const PROFILE_QR = {
+        id: "qr",
+        nativeFormats: ["qr_code", "data_matrix"],
+        title: "Scan label QR code",
+        guideHtml: `
+            <div class="barcode-camera-guide-diagram" aria-hidden="true">
+                <div class="guide-qr-box">QR</div>
+                <div class="guide-batch-text">Batch number</div>
+            </div>
+            <p class="barcode-camera-guide-text">
+                On the pallet/carton label, use the <strong>square QR code to the left</strong> of the batch number.
+                The batch number will fill in automatically.
+            </p>`,
+        targetClass: "barcode-camera-target--square",
+        targetLabel: "QR",
+        hint: "Scan the square QR code on the label — it sits to the left of the printed batch number.",
+        hintLive: "Fill the gold square with the QR code only (not the batch number text).",
+        preferFormats: ["qr_code", "data_matrix"],
+        qrbox: squareScanBoxSize,
+        aspectRatio: 1.0,
+    };
+
+    /**
+     * GS1 inspector / linear barcodes: Code-128 (GS1-128), plus QR/DM if present.
+     * Wide scan window for horizontal bars on pallet labels.
+     */
+    const PROFILE_GS1 = {
+        id: "gs1",
+        nativeFormats: [
+            "code_128",
+            "code_39",
+            "ean_13",
+            "ean_8",
+            "upc_a",
+            "upc_e",
+            "qr_code",
+            "data_matrix",
+        ],
+        title: "Scan GS1 barcode",
+        guideHtml: `
+            <div class="barcode-camera-guide-diagram barcode-camera-guide-diagram--linear" aria-hidden="true">
+                <div class="guide-linear-box">GS1-128</div>
+            </div>
+            <p class="barcode-camera-guide-text">
+                Aim at the <strong>linear GS1-128 / Code 128</strong> bars on the label
+                (or the QR if that is what you are testing). Hold steady until it beeps.
+            </p>`,
+        targetClass: "barcode-camera-target--linear",
+        targetLabel: "GS1",
+        hint: "Scan the GS1-128 barcode (linear bars) or any GS1 QR / Data Matrix on the label.",
+        hintLive: "Align the barcode inside the wide gold frame. Linear bars work best held flat and fully in view.",
+        preferFormats: ["code_128", "qr_code", "data_matrix"],
+        qrbox: linearScanBoxSize,
+        aspectRatio: 1.777,
+    };
 
     const scanState = new WeakMap();
     const lastScanByInput = new WeakMap();
@@ -25,7 +75,11 @@
         viewport: null,
         errorEl: null,
         hintEl: null,
+        guideEl: null,
+        titleEl: null,
         activeInput: null,
+        profile: PROFILE_QR,
+        lastFormat: null,
         stream: null,
         video: null,
         rafId: null,
@@ -35,6 +89,44 @@
         closed: true,
         lastCameraDecode: null,
     };
+
+    function squareScanBoxSize(viewfinderWidth, viewfinderHeight) {
+        const size = Math.min(
+            Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.58),
+            240
+        );
+        const edge = Math.max(size, 180);
+        return { width: edge, height: edge };
+    }
+
+    function linearScanBoxSize(viewfinderWidth, viewfinderHeight) {
+        const width = Math.min(Math.floor(viewfinderWidth * 0.92), 420);
+        const height = Math.min(Math.floor(viewfinderHeight * 0.28), 150);
+        return {
+            width: Math.max(width, 240),
+            height: Math.max(height, 90),
+        };
+    }
+
+    function getCameraProfile(input) {
+        const mode = (input?.dataset?.barcodeScanMode || "qr").toLowerCase();
+        if (mode === "gs1" || mode === "linear" || mode === "code128") {
+            return PROFILE_GS1;
+        }
+        return PROFILE_QR;
+    }
+
+    function applyProfileToModal(profile) {
+        if (cameraState.titleEl) {
+            cameraState.titleEl.textContent = profile.title;
+        }
+        if (cameraState.guideEl) {
+            cameraState.guideEl.innerHTML = profile.guideHtml;
+        }
+        if (cameraState.hintEl) {
+            cameraState.hintEl.textContent = profile.hint;
+        }
+    }
 
     function getState(input) {
         if (!scanState.has(input)) {
@@ -160,6 +252,7 @@
                 new CustomEvent("barcode-scanned", {
                     bubbles: true,
                     detail: {
+                        inputId: input.id || null,
                         raw: resolved.raw,
                         gs1: resolved.gs1,
                         batchLot: null,
@@ -167,22 +260,29 @@
                         count: resolved.count,
                         prefill: null,
                         source: "scan",
+                        format: cameraState.lastFormat || null,
+                        symbology: cameraState.lastFormat || null,
                     },
                 })
             );
+            cameraState.lastFormat = null;
             return;
         }
 
         const valueToSet = resolved.value;
         if (!valueToSet || valueToSet.length < MIN_CODE_LENGTH) return;
 
-        input.value = valueToSet;
+        // Inspector / debug fields: keep the full raw payload in the input
+        const preferRaw =
+            (input.dataset.barcodeScanMode || "").toLowerCase() === "gs1" &&
+            resolved.raw;
+        input.value = preferRaw ? resolved.raw : valueToSet;
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
 
         const form = input.closest("form");
-        const prefill = await lookupBarcode(valueToSet, input);
-        applyPrefill(form, prefill);
+        const prefill = preferRaw ? null : await lookupBarcode(valueToSet, input);
+        if (!preferRaw) applyPrefill(form, prefill);
 
         const statusLabel = resolved.batchLot
             ? `Batch: ${resolved.batchLot}`
@@ -200,6 +300,7 @@
             new CustomEvent("barcode-scanned", {
                 bubbles: true,
                 detail: {
+                    inputId: input.id || null,
                     raw: resolved.raw || valueToSet,
                     code: valueToSet,
                     gs1: resolved.gs1,
@@ -208,9 +309,12 @@
                     count: resolved.count,
                     prefill,
                     source: "scan",
+                    format: cameraState.lastFormat || null,
+                    symbology: cameraState.lastFormat || null,
                 },
             })
         );
+        cameraState.lastFormat = null;
     }
 
     function onKeyDown(input, event) {
@@ -304,21 +408,12 @@
         modal.innerHTML = `
             <div class="barcode-camera-panel" role="dialog" aria-modal="true" aria-labelledby="barcode-camera-title">
                 <header class="barcode-camera-header">
-                    <h3 id="barcode-camera-title">Scan label QR code</h3>
+                    <h3 id="barcode-camera-title">Scan label</h3>
                     <button type="button" class="barcode-camera-close touch-target" data-barcode-camera-close aria-label="Close camera scanner">Close</button>
                 </header>
-                <div class="barcode-camera-guide">
-                    <div class="barcode-camera-guide-diagram" aria-hidden="true">
-                        <div class="guide-qr-box">QR</div>
-                        <div class="guide-batch-text">Batch number</div>
-                    </div>
-                    <p class="barcode-camera-guide-text">
-                        On the pallet/carton label, use the <strong>square QR code to the left</strong> of the batch number.
-                        The batch number will fill in automatically.
-                    </p>
-                </div>
+                <div class="barcode-camera-guide" data-barcode-camera-guide></div>
                 <div id="barcode-camera-viewport" class="barcode-camera-viewport"></div>
-                <p class="barcode-camera-hint">${CAMERA_HINT_LIVE}</p>
+                <p class="barcode-camera-hint"></p>
                 <p class="barcode-camera-error" hidden></p>
             </div>
         `;
@@ -328,6 +423,8 @@
         cameraState.viewport = modal.querySelector("#barcode-camera-viewport");
         cameraState.errorEl = modal.querySelector(".barcode-camera-error");
         cameraState.hintEl = modal.querySelector(".barcode-camera-hint");
+        cameraState.guideEl = modal.querySelector("[data-barcode-camera-guide]");
+        cameraState.titleEl = modal.querySelector("#barcode-camera-title");
 
         modal.querySelector("[data-barcode-camera-close]").addEventListener("click", closeCameraScan);
         modal.addEventListener("click", (event) => {
@@ -413,9 +510,10 @@
         }
     }
 
-    async function handleCameraSuccess(code) {
+    async function handleCameraSuccess(code, format) {
         if (cameraState.lastCameraDecode === code) return;
         cameraState.lastCameraDecode = code;
+        cameraState.lastFormat = format || null;
 
         const input = cameraState.activeInput;
         await closeCameraScan();
@@ -425,19 +523,32 @@
         }
     }
 
-    function mountNativePreview(video) {
+    function mountNativePreview(video, profile) {
         cameraState.viewport.innerHTML = "";
         const live = document.createElement("div");
         live.className = "barcode-camera-live";
+        const targetClass = profile.targetClass || "barcode-camera-target--square";
+        const label = profile.targetLabel || "QR";
         live.innerHTML = `
             <div class="barcode-camera-overlay" aria-hidden="true">
-                <div class="barcode-camera-target barcode-camera-target--square">
-                    <span class="barcode-camera-target-label">QR</span>
+                <div class="barcode-camera-target ${targetClass}">
+                    <span class="barcode-camera-target-label">${label}</span>
                 </div>
             </div>
         `;
         live.insertBefore(video, live.firstChild);
         cameraState.viewport.appendChild(live);
+    }
+
+    function pickDetectedCode(codes, profile) {
+        if (!codes || !codes.length) return null;
+        const withValue = codes.filter((c) => c.rawValue);
+        if (!withValue.length) return null;
+        for (const fmt of profile.preferFormats || []) {
+            const hit = withValue.find((c) => c.format === fmt);
+            if (hit) return hit;
+        }
+        return withValue[0];
     }
 
     async function startNativeCamera() {
@@ -448,7 +559,22 @@
             throw new Error("Native scanner not available");
         }
 
-        cameraState.detector = new BarcodeDetector({ formats: CAMERA_BARCODE_FORMATS });
+        const profile = cameraState.profile || PROFILE_QR;
+        let formats = profile.nativeFormats.slice();
+        try {
+            if (typeof BarcodeDetector.getSupportedFormats === "function") {
+                const supported = await BarcodeDetector.getSupportedFormats();
+                const supportedSet = new Set(supported);
+                formats = formats.filter((f) => supportedSet.has(f));
+                if (!formats.length) {
+                    formats = profile.nativeFormats.slice();
+                }
+            }
+        } catch {
+            /* use full list */
+        }
+
+        cameraState.detector = new BarcodeDetector({ formats });
         cameraState.stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: { ideal: "environment" },
@@ -465,12 +591,12 @@
         video.muted = true;
         video.className = "barcode-camera-video";
         cameraState.video = video;
-        mountNativePreview(video);
+        mountNativePreview(video, profile);
         video.srcObject = cameraState.stream;
         await video.play();
 
         if (cameraState.hintEl) {
-            cameraState.hintEl.textContent = CAMERA_HINT_LIVE;
+            cameraState.hintEl.textContent = profile.hintLive;
         }
 
         let busy = false;
@@ -484,12 +610,9 @@
             busy = true;
             try {
                 const codes = await cameraState.detector.detect(cameraState.video);
-                const pick =
-                    codes.find((c) => c.format === "qr_code" && c.rawValue) ||
-                    codes.find((c) => c.format === "data_matrix" && c.rawValue) ||
-                    codes.find((c) => c.rawValue);
+                const pick = pickDetectedCode(codes, profile);
                 if (pick?.rawValue) {
-                    await handleCameraSuccess(pick.rawValue);
+                    await handleCameraSuccess(pick.rawValue, pick.format || null);
                     busy = false;
                     return;
                 }
@@ -502,20 +625,31 @@
         cameraState.rafId = requestAnimationFrame(tick);
     }
 
-    function squareScanBoxSize(viewfinderWidth, viewfinderHeight) {
-        const size = Math.min(
-            Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.58),
-            240
-        );
-        const edge = Math.max(size, 180);
-        return { width: edge, height: edge };
+    function html5FormatsForProfile(profile) {
+        if (typeof Html5QrcodeSupportedFormats === "undefined") return null;
+        if (profile.id === "gs1") {
+            return [
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.QR_CODE,
+                Html5QrcodeSupportedFormats.DATA_MATRIX,
+            ];
+        }
+        return [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+        ];
     }
 
-    function html5ScanConfig() {
+    function html5ScanConfig(profile) {
         const config = {
             fps: 10,
-            qrbox: squareScanBoxSize,
-            aspectRatio: 1.0,
+            qrbox: profile.qrbox || squareScanBoxSize,
+            aspectRatio: profile.aspectRatio || 1.0,
             videoConstraints: {
                 facingMode: "environment",
                 width: { ideal: 1280 },
@@ -523,11 +657,9 @@
             },
         };
 
-        if (typeof Html5QrcodeSupportedFormats !== "undefined") {
-            config.formatsToSupport = [
-                Html5QrcodeSupportedFormats.QR_CODE,
-                Html5QrcodeSupportedFormats.DATA_MATRIX,
-            ];
+        const formats = html5FormatsForProfile(profile);
+        if (formats) {
+            config.formatsToSupport = formats;
         }
 
         return config;
@@ -539,16 +671,21 @@
             throw new Error("Scanner library failed to load");
         }
 
+        const profile = cameraState.profile || PROFILE_QR;
         const readerId = "barcode-camera-reader";
         cameraState.viewport.innerHTML = `<div id="${readerId}" class="barcode-camera-reader"></div>`;
 
         cameraState.html5Scanner = new Html5Qrcode(readerId, { verbose: false });
         cameraState.usingHtml5 = true;
 
-        const onScan = async (decodedText) => {
-            await handleCameraSuccess(decodedText);
+        const onScan = async (decodedText, result) => {
+            const format =
+                result?.result?.format?.formatName ||
+                result?.result?.format ||
+                null;
+            await handleCameraSuccess(decodedText, format);
         };
-        const config = html5ScanConfig();
+        const config = html5ScanConfig(profile);
 
         try {
             await cameraState.html5Scanner.start(
@@ -574,7 +711,7 @@
         }
 
         if (cameraState.hintEl) {
-            cameraState.hintEl.textContent = CAMERA_HINT_LIVE;
+            cameraState.hintEl.textContent = profile.hintLive;
         }
     }
 
@@ -591,15 +728,15 @@
         ensureCameraModal();
         attachContext(input);
         cameraState.activeInput = input;
+        cameraState.profile = getCameraProfile(input);
+        cameraState.lastFormat = null;
+        applyProfileToModal(cameraState.profile);
         cameraState.closed = false;
         cameraState.lastCameraDecode = null;
         cameraState.modal.hidden = false;
         document.body.classList.add("barcode-camera-open");
         showCameraError("");
         showCameraLoading("Starting camera…");
-        if (cameraState.hintEl) {
-            cameraState.hintEl.textContent = CAMERA_HINT;
-        }
         setFieldStatus(input, "Opening camera…", "ready");
 
         try {

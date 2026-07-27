@@ -1771,6 +1771,38 @@ body.barcode-camera-open {
     letter-spacing: 0.08em;
 }
 
+/* Linear / GS1-128 wide frame (scan inspector) */
+.barcode-camera-target--linear {
+    width: min(88vw, 420px);
+    height: min(22vw, 140px);
+    min-height: 90px;
+    aspect-ratio: auto;
+    border-radius: 6px;
+}
+
+.barcode-camera-guide-diagram--linear {
+    justify-content: center;
+}
+
+.guide-linear-box {
+    width: min(70vw, 280px);
+    height: 48px;
+    border: 2px dashed var(--berton-gold, #c9a227);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #fff;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.12) 0 3px,
+        transparent 3px 7px
+    );
+}
+
 /* html5-qrcode square scan region */
 #barcode-camera-reader #qr-shaded-region {
     border-radius: 8px !important;

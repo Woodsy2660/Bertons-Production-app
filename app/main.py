@@ -229,6 +229,23 @@ PALLET_TAGS_UI_ENABLED = False
 app.include_router(api_router, prefix="/api")
 
 
+@app.get("/debug/scan-inspector")
+async def gs1_scan_inspector_page(
+    request: Request,
+    role: Annotated[Role, Depends(require_manager)],
+):
+    """Manager-only GS1 barcode diagnostic — isolated from production forms.
+
+    Shows raw scanner output + AI parse + structured Final Pallet Count
+    prefill candidates (sessionStorage only). Safe to remove later.
+    """
+    return templates.TemplateResponse(
+        request,
+        "debug/scan_inspector.html",
+        {"role": role},
+    )
+
+
 @app.get("/dev/work-order-parser")
 async def dev_work_order_parser_page(
     request: Request,
