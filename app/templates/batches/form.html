@@ -422,8 +422,8 @@
 
         {# FINAL PALLET COUNT — GS1 scan accelerator + two separate sections #}
         {% elif not form_readonly and form_template.form_type.value == 'final_pallet_count' %}
-        {% set bottles_field_keys = ['seq_no', 'prn_date', 'pallet_no', 'colour', 'foreign_objects_checked', 'captured_at'] %}
-        {% set finished_field_keys = ['seq_no', 'high', 'captured_at'] %}
+        {% set bottles_field_keys = ['prn_date', 'pallet_no', 'colour', 'foreign_objects_checked', 'captured_at'] %}
+        {% set finished_field_keys = ['high', 'captured_at'] %}
 
         <div class="berton-card p-6 final-pallet-scan-card js-final-pallet-scan-card"
              data-batch-id="{{ batch.id }}"
@@ -515,8 +515,8 @@
                                autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields %}
-                    {# initial/initials/checked_by duplicate "Your initials" (operator_identifier) #}
-                    {% if field.key not in ['captured_at', 'initial', 'initials', 'checked_by', 'table', 'region'] %}
+                    {# initial/initials/checked_by duplicate "Your initials"; seq_no is reading.sequence #}
+                    {% if field.key not in ['captured_at', 'initial', 'initials', 'checked_by', 'seq_no', 'table', 'region'] %}
                     <div>
                         <label class="berton-label">
                             {{ field.label }}

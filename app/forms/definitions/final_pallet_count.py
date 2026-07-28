@@ -85,12 +85,7 @@ FINAL_PALLET_COUNT_TEMPLATE = FormTemplate(
             enum_values=["bottles", "finished"],
         ),
         # Bottles region fields
-        FieldDef(
-            key="seq_no",
-            label="#",
-            field_type=FieldType.NUMBER,
-            source=FieldSource.OPERATOR,
-        ),
+        # Entry order is reading.sequence — not operator-entered
         FieldDef(
             key="prn_date",
             label="PRN date",

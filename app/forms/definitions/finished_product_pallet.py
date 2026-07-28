@@ -82,12 +82,7 @@ FINISHED_PRODUCT_PALLET_TEMPLATE = FormTemplate(
         # Free-text notes use the shared optional form Notes field (header_payload.notes)
     ],
     reading_fields=[
-        FieldDef(
-            key="seq_no",
-            label="#",
-            field_type=FieldType.NUMBER,
-            source=FieldSource.OPERATOR,
-        ),
+        # Entry order is reading.sequence — not operator-entered
         FieldDef(
             key="high",
             label="High",
