@@ -73,12 +73,7 @@ FINAL_PALLET_COUNT_TEMPLATE = FormTemplate(
             field_type=FieldType.NUMBER,
             source=FieldSource.OPERATOR,
         ),
-        FieldDef(
-            key="summary_note",
-            label="Summary note",
-            field_type=FieldType.TEXT,
-            source=FieldSource.OPERATOR,
-        ),
+        # Free-text notes use the shared optional form Notes field (header_payload.notes)
     ],
     reading_fields=[
         # Region discriminator

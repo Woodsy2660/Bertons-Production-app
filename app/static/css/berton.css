@@ -1240,6 +1240,21 @@ body.pdf-standalone-page .reference-pdf-status {
     color: #8b5a00;
 }
 
+/* Optional form notes (near Mark Form Complete) */
+.form-notes-section {
+    margin-top: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.form-notes-section .berton-input {
+    min-height: 5rem;
+    width: 100%;
+}
+
+.form-notes-panel {
+    margin-bottom: 0;
+}
+
 /* Final Pallet Count — fields filled from GS1 scan */
 .berton-input.from-scan,
 input.from-scan {

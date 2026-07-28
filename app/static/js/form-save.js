@@ -305,24 +305,66 @@
 
     /**
      * Fields that carry across successive "Add entry" submissions until the
-     * operator scans/types a new value (or clears the field).
-     * Primary use: pallet-tag batch number on Carton Details — avoid re-scan.
+     * operator changes them. Includes:
+     * - Named barcode/batch fields
+     * - Yes/No and Y/N/NA selects (marked data-sticky-reading, or auto-detected)
      */
     const STICKY_READING_FIELDS = new Set([
         "batch_number_pallet_tag",
         "batch_number",
     ]);
 
+    const YN_VALUES = new Set(["Y", "N", "NA", "YES", "NO", "N/A"]);
+
+    function isYesNoSelect(el) {
+        if (!el || el.tagName !== "SELECT") return false;
+        const vals = Array.from(el.options)
+            .map((o) => String(o.value || "").trim())
+            .filter(Boolean);
+        if (!vals.length) return false;
+        return vals.every((v) => YN_VALUES.has(v.toUpperCase()));
+    }
+
+    function setControlValue(el, value) {
+        if (!el) return;
+        if (el.tagName === "SELECT") {
+            el.value = value;
+            // Keep form.reset() restoring this sticky value next time
+            Array.from(el.options).forEach((opt) => {
+                opt.defaultSelected = opt.value === value;
+            });
+            return;
+        }
+        el.value = value;
+        try {
+            el.defaultValue = value;
+        } catch {
+            /* ignore */
+        }
+    }
+
     function captureStickyReadingValues(form) {
         const sticky = {};
+
+        const remember = (el) => {
+            if (!el || !el.name || el.disabled) return;
+            // Skip multi-value checkbox groups (name ends with [])
+            if (el.name.endsWith("[]")) return;
+            sticky[el.name] = el.value;
+        };
+
         for (const name of STICKY_READING_FIELDS) {
-            const el = form.querySelector(`[name="${name}"]`);
-            if (el) sticky[name] = el.value;
+            remember(form.querySelector(`[name="${name}"]`));
         }
-        // Also honour explicit data-sticky-reading attributes on inputs
-        form.querySelectorAll("[data-sticky-reading]").forEach((el) => {
-            if (el.name) sticky[el.name] = el.value;
+
+        form.querySelectorAll("[data-sticky-reading]").forEach(remember);
+
+        // Safety net: any Yes/No(/NA) select on the reading form
+        form.querySelectorAll("select").forEach((el) => {
+            if (sticky[el.name] !== undefined) return;
+            if (isYesNoSelect(el)) remember(el);
         });
+
         return sticky;
     }
 
@@ -330,13 +372,7 @@
         for (const [name, value] of Object.entries(sticky || {})) {
             const el = form.querySelector(`[name="${name}"]`);
             if (!el) continue;
-            el.value = value;
-            // Keep form.reset() in sync for subsequent saves this session
-            try {
-                el.defaultValue = value;
-            } catch {
-                /* ignore non-text controls */
-            }
+            setControlValue(el, value);
         }
     }
 

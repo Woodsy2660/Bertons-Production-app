@@ -611,7 +611,7 @@ async def populate_batch_forms(
             "pallet_tag_matches": "Y",
             "bottle_breakages": 24,
             "carton_breakages": 8,
-            "summary_note": "10 bottle pallets + 132 finished pallets",
+            "notes": "10 bottle pallets + 132 finished pallets",
         },
     )
     db.add(fi_pallet)
@@ -652,7 +652,7 @@ async def populate_batch_forms(
             "layer_config_matches": "Y",
             "stack_height_matches": "Y",
             "breakages": 3,
-            "summary_note": f"{len(finished_highs)} pallets = {run['run_quantity']} cartons",
+            "notes": f"{len(finished_highs)} pallets = {run['run_quantity']} cartons",
         },
     )
     db.add(fi_wh)

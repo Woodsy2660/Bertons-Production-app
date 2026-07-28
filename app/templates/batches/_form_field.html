@@ -1,6 +1,8 @@
 {# Renders a single form field. Expects: field, field_id, field_name, display_value, readonly #}
 {% if field.field_type.value == 'bool' %}
-<select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target" {% if readonly %}disabled{% endif %}>
+{# Yes/No stick across successive entries on accrual forms (data-sticky-reading) #}
+<select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target"
+        data-sticky-reading {% if readonly %}disabled{% endif %}>
     <option value="">-- Select --</option>
     <option value="Y" {% if display_value == 'Y' or display_value == true %}selected{% endif %}>Yes</option>
     <option value="N" {% if display_value == 'N' or display_value == false %}selected{% endif %}>No</option>
@@ -35,7 +37,19 @@
     {% endfor %}
 {% endif %}
 {% elif field.field_type.value == 'enum' %}
-<select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target" {% if readonly %}disabled{% endif %}>
+{# Y/N/NA (and Yes/No) stay sticky on accrual entry forms #}
+{% set yn_tokens = ['Y', 'N', 'NA', 'YES', 'NO', 'N/A'] %}
+{% set yn_ns = namespace(ok=true) %}
+{% if field.enum_values %}
+{% for val in field.enum_values %}
+{% if val|string|upper not in yn_tokens %}{% set yn_ns.ok = false %}{% endif %}
+{% endfor %}
+{% else %}
+{% set yn_ns.ok = false %}
+{% endif %}
+<select id="{{ field_id }}" name="{{ field_name }}" class="berton-input touch-target"
+        {% if yn_ns.ok %}data-sticky-reading{% endif %}
+        {% if readonly %}disabled{% endif %}>
     <option value="">-- Select --</option>
     {% for val in field.enum_values %}
     <option value="{{ val }}" {% if display_value == val %}selected{% endif %}>{{ val }}</option>

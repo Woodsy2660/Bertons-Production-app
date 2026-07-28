@@ -56,7 +56,6 @@
                     {% set nav_role = get_role(request) %}
                     {% if nav_role %}
                     {% if nav_role == 'manager' %}
-                    <a href="/debug/scan-inspector" class="nav-link-secondary">Scan inspector</a>
                     <a href="/feedback" class="nav-link-secondary">Feedback</a>
                     {% endif %}
                     <span class="role-badge role-{{ nav_role }}">{{ nav_role|title }}</span>

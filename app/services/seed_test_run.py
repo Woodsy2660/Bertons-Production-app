@@ -507,7 +507,7 @@ async def create_compile_test_run(db: AsyncSession, upload_dir: str) -> Batch:
             "pallet_tag_matches": "Y",
             "bottle_breakages": 12,
             "carton_breakages": 3,
-            "summary_note": "12 pallets + 2 layers",
+            "notes": "12 pallets + 2 layers",
         },
     )
     db.add(fi_pallet)
@@ -556,7 +556,7 @@ async def create_compile_test_run(db: AsyncSession, upload_dir: str) -> Batch:
             "layer_config_matches": "Y",
             "stack_height_matches": "Y",
             "breakages": 2,
-            "summary_note": "21×84, 1×53 = 1817",
+            "notes": "21×84, 1×53 = 1817",
         },
     )
     db.add(fi_wh)

@@ -3,7 +3,7 @@
  * Supports element strings (with/without FNC1/GS) and human-readable (NN)value form.
  *
  * Diagnostic helpers (parseGS1Detailed, AI_NAMES, interpretAiValue, prefill candidates)
- * support /debug/scan-inspector without changing extractBatchLot behaviour used by forms.
+ * remain available for tooling; form batch extraction uses extractBatchLot.
  */
 (function () {
     "use strict";
@@ -365,7 +365,7 @@
     }
 
     /**
-     * Full diagnostic parse for the scan inspector.
+     * Full diagnostic parse (AI breakdown with offsets).
      */
     function parseGS1Detailed(raw) {
         const rawExact = String(raw ?? "");

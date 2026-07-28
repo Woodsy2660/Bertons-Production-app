@@ -128,6 +128,13 @@
     </table>
     {% endif %}
 
+    {% if header_payload.get('notes') %}
+    <div style="margin-top: 16px;">
+        <strong>Notes:</strong>
+        <div style="margin-top: 4px; white-space: pre-wrap;">{{ header_payload.get('notes') }}</div>
+    </div>
+    {% endif %}
+
     <!-- Footer -->
     <div style="margin-top: 20px; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 10px;">
         {% if form_instance and form_instance.submitted_by %}

@@ -490,7 +490,7 @@ async def _populate_all_forms(
             "pallet_tag_matches": "Y",
             "bottle_breakages": 8,
             "carton_breakages": 2,
-            "summary_note": "Mock pallet summary",
+            "notes": "Mock pallet summary",
         },
     )
     db.add(fi_pallet)
@@ -527,7 +527,7 @@ async def _populate_all_forms(
             "layer_config_matches": "Y",
             "stack_height_matches": "Y",
             "breakages": 1,
-            "summary_note": "Mock warehouse pallet log",
+            "notes": "Mock warehouse pallet log",
         },
     )
     db.add(fi_wh)
