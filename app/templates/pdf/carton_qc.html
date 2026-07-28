@@ -67,7 +67,7 @@
                 <td>{{ reading.payload.get('batch_number_pallet_tag', '-') or '-' }}</td>
                 <td class="bool-cell">{{ reading.payload.get('dividers_match', '-') or '-' }}</td>
                 <td class="bool-cell">{{ reading.payload.get('stickers_match', '-') or '-' }}</td>
-                <td>{{ reading.payload.get('initials', reading.operator_identifier) or '-' }}</td>
+                <td>{{ reading.operator_identifier or reading.payload.get('initials') or '-' }}</td>
             </tr>
             {% else %}
             <tr>
@@ -105,7 +105,7 @@
                 <td>{{ reading.payload.get('record_carton_print', '-') or '-' }}</td>
                 <td class="bool-cell">{{ reading.payload.get('glue_shots_ok', '-') or '-' }}</td>
                 <td class="bool-cell">{{ reading.payload.get('cartons_sealed_neatly', '-') or '-' }}</td>
-                <td>{{ reading.payload.get('initials', reading.operator_identifier) or '-' }}</td>
+                <td>{{ reading.operator_identifier or reading.payload.get('initials') or '-' }}</td>
             </tr>
             {% else %}
             <tr>

@@ -303,10 +303,48 @@
         trimPreviewRows(tbody, previewLimit);
     }
 
+    /**
+     * Fields that carry across successive "Add entry" submissions until the
+     * operator scans/types a new value (or clears the field).
+     * Primary use: pallet-tag batch number on Carton Details — avoid re-scan.
+     */
+    const STICKY_READING_FIELDS = new Set([
+        "batch_number_pallet_tag",
+        "batch_number",
+    ]);
+
+    function captureStickyReadingValues(form) {
+        const sticky = {};
+        for (const name of STICKY_READING_FIELDS) {
+            const el = form.querySelector(`[name="${name}"]`);
+            if (el) sticky[name] = el.value;
+        }
+        // Also honour explicit data-sticky-reading attributes on inputs
+        form.querySelectorAll("[data-sticky-reading]").forEach((el) => {
+            if (el.name) sticky[el.name] = el.value;
+        });
+        return sticky;
+    }
+
+    function restoreStickyReadingValues(form, sticky) {
+        for (const [name, value] of Object.entries(sticky || {})) {
+            const el = form.querySelector(`[name="${name}"]`);
+            if (!el) continue;
+            el.value = value;
+            // Keep form.reset() in sync for subsequent saves this session
+            try {
+                el.defaultValue = value;
+            } catch {
+                /* ignore non-text controls */
+            }
+        }
+    }
+
     function resetReadingForm(form, keepOperator) {
         const operator = keepOperator
             ? form.querySelector('[name="operator_identifier"]')?.value
             : "";
+        const sticky = captureStickyReadingValues(form);
 
         form.reset();
 
@@ -314,6 +352,8 @@
             const opSelect = form.querySelector('[name="operator_identifier"]');
             if (opSelect) opSelect.value = operator;
         }
+
+        restoreStickyReadingValues(form, sticky);
 
         const timeInput = form.querySelector('[name="captured_at"]');
         if (timeInput && !timeInput.value) {

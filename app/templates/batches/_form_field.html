@@ -67,6 +67,7 @@
     <div class="barcode-field-row">
         <input type="text" id="{{ field_id }}" name="{{ field_name }}" value="{{ display_value }}"
                class="berton-input touch-target js-barcode-input" data-barcode-scan
+               data-sticky-reading
                placeholder="Scan QR or type batch number"
                {% if readonly %}readonly{% endif %}>
         <button type="button" class="barcode-scan-btn barcode-camera-btn touch-target" data-barcode-camera-trigger="{{ field_id }}"

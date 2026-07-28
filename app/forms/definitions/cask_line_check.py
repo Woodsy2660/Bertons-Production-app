@@ -103,11 +103,6 @@ CASK_LINE_CHECK_TEMPLATE = FormTemplate(
             source=FieldSource.OPERATOR,
         ),
         FieldDef(key="slip_sheet", label="Slip Sheet", field_type=FieldType.BOOL, source=FieldSource.OPERATOR),
-        FieldDef(
-            key="checked_by",
-            label="Checked By (initials)",
-            field_type=FieldType.TEXT,
-            source=FieldSource.OPERATOR,
-        ),
+        # Sign-off is reading.operator_identifier ("Your initials") — no separate checked_by field
     ],
 )

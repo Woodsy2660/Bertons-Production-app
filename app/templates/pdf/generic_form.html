@@ -55,7 +55,7 @@
                 <th>Time</th>
                 <th>Operator</th>
                 {% for field in form_template.reading_fields %}
-                {% if field.key not in ['captured_at', 'initial', 'initials'] %}
+                {% if field.key not in ['captured_at', 'initial', 'initials', 'checked_by'] %}
                 <th>{{ field.label }}</th>
                 {% endif %}
                 {% endfor %}
@@ -68,7 +68,7 @@
                 <td>{{ reading.captured_at.strftime('%H:%M') }}</td>
                 <td>{{ reading.operator_identifier }}</td>
                 {% for field in form_template.reading_fields %}
-                {% if field.key not in ['captured_at', 'initial', 'initials'] %}
+                {% if field.key not in ['captured_at', 'initial', 'initials', 'checked_by'] %}
                 <td>
                     {% set val = reading.payload.get(field.key, '') %}
                     {% if val is iterable and val is not string %}
@@ -106,7 +106,7 @@
         </thead>
         <tbody>
             {% for field in form_template.reading_fields %}
-            {% if field.key not in ['captured_at', 'initial', 'initials'] %}
+            {% if field.key not in ['captured_at', 'initial', 'initials', 'checked_by'] %}
             <tr>
                 <td><strong>{{ field.label }}</strong></td>
                 {% for reading in readings %}

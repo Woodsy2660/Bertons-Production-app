@@ -130,12 +130,6 @@ CARTON_QC_TEMPLATE = FormTemplate(
             field_type=FieldType.BOOL,
             source=FieldSource.OPERATOR,
         ),
-        # Common field
-        FieldDef(
-            key="initials",
-            label="Initials",
-            field_type=FieldType.TEXT,
-            source=FieldSource.OPERATOR,
-        ),
+        # Sign-off is reading.operator_identifier ("Your initials") — no payload initials field
     ],
 )

@@ -96,6 +96,61 @@ async def barcode_lookup(
     }
 
 
+class Gs1ScanBody(BaseModel):
+    """Knox Capture keyboard-wedge GS1 string (Parse GS1 → bracketed AIs)."""
+
+    raw: str = Field(..., min_length=1, description="Full wedge scan string")
+
+
+@router.post("/{batch_id}/forms/final_pallet_count/gs1-scan")
+async def api_final_pallet_gs1_scan(
+    batch_id: uuid.UUID,
+    body: Gs1ScanBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    role: Annotated[Role, Depends(require_operator_or_manager)],
+) -> dict[str, Any]:
+    """Parse a pallet-label GS1 scan and return Final Pallet Count prefill fields.
+
+    Primary format (Knox Capture Parse GS1)::
+
+        (02)09331288015587(11)260501(10)6121(37)504(90)16211644
+
+    Never invents values — missing AIs stay blank and are flagged. Compares batch
+    (AI 10) and GTIN (AI 02) against work-order values when available.
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.models import Batch
+    from app.services.batch_lifecycle import assert_can_write_forms
+    from app.services.gs1_parse import (
+        parse_final_pallet_gs1,
+        work_order_expectations_from_header,
+    )
+
+    result_q = await db.execute(
+        select(Batch)
+        .options(selectinload(Batch.header))
+        .where(Batch.id == batch_id)
+    )
+    batch = result_q.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    assert_can_write_forms(batch, role)
+
+    expectations = work_order_expectations_from_header(batch.header)
+    # Also allow run_number as a soft batch candidate (pallet tags sometimes encode it)
+    batch_candidates = list(expectations["batch"])
+    if batch.run_number:
+        batch_candidates.append(batch.run_number)
+
+    result = parse_final_pallet_gs1(
+        body.raw,
+        expected_batch_candidates=batch_candidates,
+        expected_gtin_candidates=expectations["gtin"],
+    )
+    return result.to_dict()
+
+
 @router.post("/{batch_id}/forms/{form_type}/readings", response_model=ReadingResponse)
 async def api_add_reading(
     batch_id: uuid.UUID,

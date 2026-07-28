@@ -108,13 +108,13 @@
         },
         "37": {
             form_field: "high",
-            form_label: "Count of trade items → High (finished)",
+            form_label: "Count / quantity → High (finished)",
             form_region: "reading.finished",
         },
         "90": {
-            form_field: "internal_code",
-            form_label: "Internal code (90)",
-            form_region: "header",
+            form_field: "pallet_no",
+            form_label: "Pallet number (internal AI 90)",
+            form_region: "reading.bottles",
         },
         "00": {
             form_field: "sscc",

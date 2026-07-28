@@ -333,8 +333,16 @@
 
         {# CARTON QC — two separate sections #}
         {% if not form_readonly and form_template.form_type.value == 'carton_qc' %}
-        {% set carton_field_keys = ['carton_manufacturer', 'carton_code', 'qty_on_pallet', 'carton_code_match', 'batch_number_pallet_tag', 'dividers_match', 'stickers_match', 'initials'] %}
-        {% set hourly_field_keys = ['captured_at', 'cartons_formed_glued', 'check_6_cartons', 'carton_print_match', 'record_carton_print', 'glue_shots_ok', 'cartons_sealed_neatly', 'initials'] %}
+        {# Initials collected via operator_identifier ("Your initials") above — do not also render payload initials #}
+        {% set carton_field_keys = ['carton_manufacturer', 'carton_code', 'qty_on_pallet', 'carton_code_match', 'batch_number_pallet_tag', 'dividers_match', 'stickers_match'] %}
+        {% set hourly_field_keys = ['captured_at', 'cartons_formed_glued', 'check_6_cartons', 'carton_print_match', 'record_carton_print', 'glue_shots_ok', 'cartons_sealed_neatly'] %}
+        {# Carry last pallet-tag batch # into the next carton entry (JS also keeps it after each save) #}
+        {% set ns_carton_sticky = namespace(batch_tag='') %}
+        {% for reading in readings %}
+            {% if reading.payload.get('table') == 'carton_details' and reading.payload.get('batch_number_pallet_tag') %}
+                {% set ns_carton_sticky.batch_tag = reading.payload.get('batch_number_pallet_tag') %}
+            {% endif %}
+        {% endfor %}
 
         <div class="berton-card p-6">
             <h2 class="text-lg text-primary font-semibold mb-4">Carton Details</h2>
@@ -352,7 +360,11 @@
                         <label class="berton-label">{{ field.label }}</label>
                         {% set field_id = 'cd_' ~ field.key %}
                         {% set field_name = field.key %}
+                        {% if field.key == 'batch_number_pallet_tag' %}
+                        {% set display_value = ns_carton_sticky.batch_tag %}
+                        {% else %}
                         {% set display_value = '' %}
+                        {% endif %}
                         {% include "batches/_form_field.html" %}
                         {% if reference_values.get(field.key) %}
                         {% set ref_key = field.key %}
@@ -394,10 +406,37 @@
             </form>
         </div>
 
-        {# FINAL PALLET COUNT — two separate sections #}
+        {# FINAL PALLET COUNT — GS1 scan accelerator + two separate sections #}
         {% elif not form_readonly and form_template.form_type.value == 'final_pallet_count' %}
         {% set bottles_field_keys = ['seq_no', 'prn_date', 'pallet_no', 'colour', 'foreign_objects_checked', 'captured_at'] %}
         {% set finished_field_keys = ['seq_no', 'high', 'captured_at'] %}
+
+        <div class="berton-card p-6 final-pallet-scan-card js-final-pallet-scan-card"
+             data-batch-id="{{ batch.id }}"
+             data-form-type="final_pallet_count">
+            <h2 class="text-lg text-primary font-semibold mb-1">Scan pallet</h2>
+            <p class="berton-hint mb-4">
+                Tap the field below, then scan the pallet tag (GS1). Pallet number, quantity,
+                and PRN date fill in automatically — you can still edit any field by hand.
+            </p>
+            <div>
+                <label for="final-pallet-gs1-scan" class="berton-label">Scan pallet label</label>
+                <input type="text"
+                       id="final-pallet-gs1-scan"
+                       name="gs1_scan"
+                       class="berton-input touch-target final-pallet-scan-input"
+                       placeholder="Tap here, then scan pallet tag"
+                       autocomplete="off"
+                       autocapitalize="off"
+                       spellcheck="false"
+                       enterkeyhint="done"
+                       inputmode="none">
+                <p class="barcode-field-status js-final-pallet-scan-status" data-state="idle">
+                    Ready when focused — press scanner trigger
+                </p>
+                <div class="js-final-pallet-scan-flags" aria-live="polite"></div>
+            </div>
+        </div>
 
         <div class="berton-card p-6">
             <h2 class="text-lg text-primary font-semibold mb-4">Bottles</h2>
@@ -462,7 +501,8 @@
                                autocomplete="off" maxlength="20">
                     </div>
                     {% for field in form_template.reading_fields %}
-                    {% if field.key not in ['captured_at', 'initial', 'initials', 'table', 'region'] %}
+                    {# initial/initials/checked_by duplicate "Your initials" (operator_identifier) #}
+                    {% if field.key not in ['captured_at', 'initial', 'initials', 'checked_by', 'table', 'region'] %}
                     <div>
                         <label class="berton-label">
                             {{ field.label }}
@@ -545,5 +585,8 @@
 {% block head %}
 <script src="/static/js/gs1-parse.js" defer></script>
 <script src="/static/js/barcode-scan.js" defer></script>
-<script src="/static/js/form-save.js?v=11" defer></script>
+<script src="/static/js/form-save.js?v=12" defer></script>
+{% if form_template.form_type.value == 'final_pallet_count' %}
+<script src="/static/js/final-pallet-gs1.js?v=1" defer></script>
+{% endif %}
 {% endblock %}

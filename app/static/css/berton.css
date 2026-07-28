@@ -1234,6 +1234,48 @@ body.pdf-standalone-page .reference-pdf-status {
     color: #1a3a5c;
 }
 
+.berton-alert-warn {
+    background: #fff6e5;
+    border: 2px solid #e0c080;
+    color: #8b5a00;
+}
+
+/* Final Pallet Count — fields filled from GS1 scan */
+.berton-input.from-scan,
+input.from-scan {
+    border-color: var(--berton-gold);
+    background: #faf6f0;
+    box-shadow: 0 0 0 1px rgba(184, 149, 106, 0.35);
+}
+
+.scan-prefill-badge {
+    font-weight: 400;
+    font-size: 0.85em;
+    color: var(--berton-burgundy);
+    margin-left: 0.35rem;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.final-pallet-scan-card .final-pallet-scan-input {
+    font-size: 1.15rem;
+    min-height: 56px;
+    letter-spacing: 0.02em;
+}
+
+.final-pallet-scan-card .js-final-pallet-scan-flags {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.final-pallet-scan-card .js-final-pallet-scan-flags .berton-alert {
+    margin-bottom: 0;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+}
+
 /* Document management (manager) */
 .doc-list {
     list-style: none;
