@@ -115,40 +115,14 @@ async def api_final_pallet_gs1_scan(
 
         (02)09331288015587(11)260501(10)6121(37)504(90)16211644
 
-    Never invents values — missing AIs stay blank and are flagged. Compares batch
-    (AI 10) and GTIN (AI 02) against work-order values when available.
+    Never invents values — missing AIs stay blank and are flagged. Does not
+    compare against work-order data; operators check filled values.
     """
-    from sqlalchemy.orm import selectinload
+    from app.services.gs1_parse import parse_final_pallet_gs1
 
-    from app.models import Batch
-    from app.services.batch_lifecycle import assert_can_write_forms
-    from app.services.gs1_parse import (
-        parse_final_pallet_gs1,
-        work_order_expectations_from_header,
-    )
-
-    result_q = await db.execute(
-        select(Batch)
-        .options(selectinload(Batch.header))
-        .where(Batch.id == batch_id)
-    )
-    batch = result_q.scalar_one_or_none()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    assert_can_write_forms(batch, role)
-
-    expectations = work_order_expectations_from_header(batch.header)
-    # Also allow run_number as a soft batch candidate (pallet tags sometimes encode it)
-    batch_candidates = list(expectations["batch"])
-    if batch.run_number:
-        batch_candidates.append(batch.run_number)
-
-    result = parse_final_pallet_gs1(
-        body.raw,
-        expected_batch_candidates=batch_candidates,
-        expected_gtin_candidates=expectations["gtin"],
-    )
-    return result.to_dict()
+    # Auth + write access for this run (no WO matching)
+    await get_open_batch(db, batch_id, role)
+    return parse_final_pallet_gs1(body.raw).to_dict()
 
 
 @router.post("/{batch_id}/forms/{form_type}/readings", response_model=ReadingResponse)

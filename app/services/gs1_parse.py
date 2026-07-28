@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Bracketed AI tokens: (nn) or (nnn)/(nnnn) then value until next "(" or end.
+# Work-order matching is intentionally NOT applied — operators verify scan results.
 _BRACKETED_AI_RE = re.compile(r"\((\d{2,4})\)([^(]*)")
 
 # AIs we map for Final Pallet Count prefill / validation.
@@ -134,30 +135,6 @@ def format_gs1_date_yymmdd(value: str | None) -> str | None:
     return f"{year:04d}-{mm:02d}-{dd:02d}"
 
 
-def _normalize_code(value: str | None) -> str:
-    """Loose normalize for equality checks (strip, upper, drop leading zeros for numeric)."""
-    if not value:
-        return ""
-    s = str(value).strip().upper()
-    # GTINs often differ by leading zero padding
-    if s.isdigit():
-        s = s.lstrip("0") or "0"
-    return s
-
-
-def _codes_match(scanned: str | None, expected: str | None) -> bool:
-    a = _normalize_code(scanned)
-    b = _normalize_code(expected)
-    if not a or not b:
-        return True  # nothing to compare
-    if a == b:
-        return True
-    # Contained match (e.g. batch fragment vs vessel_batch)
-    if a in b or b in a:
-        return True
-    return False
-
-
 def map_final_pallet_fields(ais: dict[str, str]) -> tuple[dict[str, str | None], list[Gs1Flag]]:
     """Map AIs → Final Pallet Count logical fields; flag missing expected AIs."""
     fields: dict[str, str | None] = {
@@ -219,7 +196,7 @@ def map_final_pallet_fields(ais: dict[str, str]) -> tuple[dict[str, str | None],
 
 def build_prefill_map(fields: dict[str, str | None]) -> dict[str, str]:
     """Only include keys with concrete values for form inputs."""
-    # Form-facing keys only (not batch/gtin — those are validation / status)
+    # Form-facing keys (batch/gtin remain in fields for status summary only)
     form_keys = ("pallet_no", "high", "prn_date", "quantity")
     out: dict[str, str] = {}
     for key in form_keys:
@@ -234,80 +211,12 @@ def build_prefill_map(fields: dict[str, str | None]) -> dict[str, str]:
     return out
 
 
-def validate_against_work_order(
-    fields: dict[str, str | None],
-    *,
-    expected_batch: str | None = None,
-    expected_gtin: str | None = None,
-    expected_batch_candidates: list[str] | None = None,
-    expected_gtin_candidates: list[str] | None = None,
-) -> list[Gs1Flag]:
-    """Flag mismatches vs run work-order values when both sides are present."""
-    flags: list[Gs1Flag] = []
-
-    batch_candidates = [
-        c
-        for c in (expected_batch_candidates or [])
-        if c and str(c).strip()
-    ]
-    if expected_batch and str(expected_batch).strip():
-        batch_candidates.append(str(expected_batch).strip())
-
-    gtin_candidates = [
-        c
-        for c in (expected_gtin_candidates or [])
-        if c and str(c).strip()
-    ]
-    if expected_gtin and str(expected_gtin).strip():
-        gtin_candidates.append(str(expected_gtin).strip())
-
-    scanned_batch = fields.get("batch")
-    if scanned_batch and batch_candidates:
-        if not any(_codes_match(scanned_batch, exp) for exp in batch_candidates):
-            shown = batch_candidates[0]
-            flags.append(
-                Gs1Flag(
-                    level="warn",
-                    code="batch_mismatch",
-                    ai=AI_BATCH,
-                    message=(
-                        f"Scanned batch {scanned_batch} doesn't match this run "
-                        f"(expected {shown})"
-                    ),
-                )
-            )
-
-    scanned_gtin = fields.get("gtin")
-    if scanned_gtin and gtin_candidates:
-        if not any(_codes_match(scanned_gtin, exp) for exp in gtin_candidates):
-            shown = gtin_candidates[0]
-            flags.append(
-                Gs1Flag(
-                    level="warn",
-                    code="gtin_mismatch",
-                    ai=AI_GTIN_CONTAINED,
-                    message=(
-                        f"Scanned GTIN {scanned_gtin} doesn't match this run "
-                        f"(expected {shown})"
-                    ),
-                )
-            )
-
-    return flags
-
-
-def parse_final_pallet_gs1(
-    raw: str,
-    *,
-    expected_batch: str | None = None,
-    expected_gtin: str | None = None,
-    expected_batch_candidates: list[str] | None = None,
-    expected_gtin_candidates: list[str] | None = None,
-) -> Gs1ParseResult:
+def parse_final_pallet_gs1(raw: str) -> Gs1ParseResult:
     """Parse Knox bracketed GS1 and map to Final Pallet Count fields.
 
-    If the scan has no bracketed AIs, return ``ok=False`` with a clear error —
-    do not invent values from free text.
+    Fills form fields from whatever AIs are present. Does not compare against
+    work-order values — operators check results. If the scan has no bracketed
+    AIs, return ``ok=False`` with a clear error — do not invent values.
     """
     text = (raw or "").strip()
     result = Gs1ParseResult(raw=text)
@@ -364,36 +273,6 @@ def parse_final_pallet_gs1(
     result.flags.extend(flags)
     result.prefill = build_prefill_map(fields)
 
-    result.flags.extend(
-        validate_against_work_order(
-            fields,
-            expected_batch=expected_batch,
-            expected_gtin=expected_gtin,
-            expected_batch_candidates=expected_batch_candidates,
-            expected_gtin_candidates=expected_gtin_candidates,
-        )
-    )
-
     # ok stays True if we parsed bracketed AIs — partial scans still return
     # structured blanks + flags rather than failing hard.
     return result
-
-
-def work_order_expectations_from_header(header: Any) -> dict[str, list[str]]:
-    """Collect batch/GTIN candidates from a BatchHeader (or None)."""
-    batches: list[str] = []
-    gtins: list[str] = []
-    if header is None:
-        return {"batch": batches, "gtin": gtins}
-
-    for attr in ("vessel_batch", "stock_item", "stock_alias"):
-        val = getattr(header, attr, None)
-        if val:
-            batches.append(str(val))
-
-    for attr in ("label_barcode", "bottle_code"):
-        val = getattr(header, attr, None)
-        if val:
-            gtins.append(str(val))
-
-    return {"batch": batches, "gtin": gtins}

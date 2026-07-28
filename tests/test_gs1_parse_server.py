@@ -96,43 +96,13 @@ def test_date_format_yymmdd():
     assert format_gs1_date_yymmdd(None) is None
 
 
-def test_batch_mismatch_flagged_against_work_order():
-    result = parse_final_pallet_gs1(
-        REAL_SCAN,
-        expected_batch_candidates=["F25OTHERLOT"],
-    )
-    mismatches = [f for f in result.flags if f.code == "batch_mismatch"]
-    assert len(mismatches) == 1
-    assert "6121" in mismatches[0].message
-    # Fields still prefilled — mismatch is a flag, not a block
+def test_no_work_order_matching_flags():
+    """Parser must not flag batch/GTIN against run data — operator checks results."""
+    result = parse_final_pallet_gs1(REAL_SCAN)
+    assert not any(f.code in ("batch_mismatch", "gtin_mismatch") for f in result.flags)
     assert result.prefill["pallet_no"] == "16211644"
-
-
-def test_batch_match_no_flag():
-    result = parse_final_pallet_gs1(
-        REAL_SCAN,
-        expected_batch_candidates=["LOT-6121-X"],
-    )
-    assert not any(f.code == "batch_mismatch" for f in result.flags)
-
-
-def test_gtin_mismatch_flagged():
-    result = parse_final_pallet_gs1(
-        REAL_SCAN,
-        expected_gtin_candidates=["99999999999999"],
-    )
-    mismatches = [f for f in result.flags if f.code == "gtin_mismatch"]
-    assert len(mismatches) == 1
-    assert "09331288015587" in mismatches[0].message
-
-
-def test_gtin_match_with_leading_zero_diff():
-    # Same GTIN without leading zero should match
-    result = parse_final_pallet_gs1(
-        REAL_SCAN,
-        expected_gtin_candidates=["9331288015587"],
-    )
-    assert not any(f.code == "gtin_mismatch" for f in result.flags)
+    assert result.fields["batch"] == "6121"
+    assert result.fields["gtin"] == "09331288015587"
 
 
 def test_parse_bracketed_raw_dict():
