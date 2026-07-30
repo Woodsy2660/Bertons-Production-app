@@ -60,7 +60,7 @@ FINISHED_PRODUCT_LINE_CHECK_TEMPLATE = FormTemplate(
         ),
         FieldDef(
             key="label_inkjet_lot",
-            label="Label Inkjet Print / Record Lot Number / Capsule PVA",
+            label="Label Inkjet Print / Record Lot Number",
             field_type=FieldType.TEXT,
             source=FieldSource.OPERATOR,
         ),

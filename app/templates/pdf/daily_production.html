@@ -52,19 +52,27 @@
             <td>{{ header_payload.get('wine_volume', '-') }}</td>
         </tr>
         <tr>
+            <th>Dip tank start (Litres)</th>
+            <td>{{ header_payload.get('dip_tank_start', '-') }}</td>
+        </tr>
+        <tr>
+            <th>Dip tank end (Litres)</th>
+            <td>{{ header_payload.get('dip_tank_end', '-') }}</td>
+        </tr>
+        <tr>
             <th>Filler Room Bottle Breakages?</th>
             <td>{{ header_payload.get('filler_room_breakages', '-') }}</td>
         </tr>
     </table>
 
-    <!-- Dip Tanks -->
+    <!-- Optional multi-tank dip readings (legacy / extended payload) -->
     {% if header_payload.get('dip_tanks') %}
     <h3 style="margin-top: 20px;">Dip Tank Readings</h3>
     <table class="dip-tank-table">
         <tr>
             <th>Tank</th>
-            <th>Start</th>
-            <th>End</th>
+            <th>Start (L)</th>
+            <th>End (L)</th>
         </tr>
         {% for tank in header_payload.get('dip_tanks', []) %}
         <tr>

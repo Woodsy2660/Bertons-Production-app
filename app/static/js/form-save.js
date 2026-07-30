@@ -312,6 +312,9 @@
     const STICKY_READING_FIELDS = new Set([
         "batch_number_pallet_tag",
         "batch_number",
+        "label_inkjet_lot", // Finished product line check — lot usually same for the run
+        "prn_date", // Final pallet count bottles
+        "pallet_no", // Final pallet count bottles
     ]);
 
     const YN_VALUES = new Set(["Y", "N", "NA", "YES", "NO", "N/A"]);

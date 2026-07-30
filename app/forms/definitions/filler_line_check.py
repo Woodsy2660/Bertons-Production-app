@@ -100,7 +100,7 @@ FILLER_LINE_CHECK_TEMPLATE = FormTemplate(
         ),
         FieldDef(
             key="redraw",
-            label="Redraw (1.4–1.7 mm)",
+            label="Redraw",
             field_type=FieldType.TEXT,
             source=FieldSource.OPERATOR,
             multi_value_count=2,
