@@ -63,14 +63,14 @@ DAILY_PRODUCTION_TEMPLATE = FormTemplate(
         ),
         FieldDef(
             key="dip_tank_start",
-            label="Dip tank start (Litres)",
-            field_type=FieldType.NUMBER,
+            label="Dip tank start",
+            field_type=FieldType.TEXT,
             source=FieldSource.OPERATOR,
         ),
         FieldDef(
             key="dip_tank_end",
-            label="Dip tank end (Litres)",
-            field_type=FieldType.NUMBER,
+            label="Dip tank end",
+            field_type=FieldType.TEXT,
             source=FieldSource.OPERATOR,
         ),
         FieldDef(

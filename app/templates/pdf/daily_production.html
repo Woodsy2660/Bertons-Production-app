@@ -52,11 +52,11 @@
             <td>{{ header_payload.get('wine_volume', '-') }}</td>
         </tr>
         <tr>
-            <th>Dip tank start (Litres)</th>
+            <th>Dip tank start</th>
             <td>{{ header_payload.get('dip_tank_start', '-') }}</td>
         </tr>
         <tr>
-            <th>Dip tank end (Litres)</th>
+            <th>Dip tank end</th>
             <td>{{ header_payload.get('dip_tank_end', '-') }}</td>
         </tr>
         <tr>
@@ -71,8 +71,8 @@
     <table class="dip-tank-table">
         <tr>
             <th>Tank</th>
-            <th>Start (L)</th>
-            <th>End (L)</th>
+            <th>Start</th>
+            <th>End</th>
         </tr>
         {% for tank in header_payload.get('dip_tanks', []) %}
         <tr>
